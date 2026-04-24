@@ -42,6 +42,12 @@
     state: directory
     mode: "0755"
 
+- name: Create containerd drop-in configuration directory
+  ansible.builtin.file:
+    path: /etc/containerd/conf.d
+    state: directory
+    mode: "0755"
+
 - name: Check whether Kubernetes is already initialized
   ansible.builtin.stat:
     path: /etc/kubernetes/admin.conf

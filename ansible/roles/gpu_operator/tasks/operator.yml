@@ -92,6 +92,8 @@
       - --namespace
       - "{{ gpu_operator_namespace }}"
       - --version={{ gpu_operator_version }}
+      - --set
+      - operator.defaultRuntime=containerd
       - --wait
       - --timeout=20m
   environment:

@@ -35,9 +35,9 @@ CNS keeps one stack file per supported Kubernetes minor release branch.
 
 | CNS stack | Kubernetes | Containerd | Calico | GPU Operator | Helm |
 | --- | --- | --- | --- | --- | --- |
-| `1.35` | `1.35.3` | `2.2.3` | `3.31.3` | `v25.10.1` | `v4.0.5` |
-| `1.34` | `1.34.6` | `2.2.3` | `3.31.3` | `v25.10.1` | `v4.0.5` |
-| `1.33` | `1.33.10` | `2.2.3` | `3.31.3` | `v25.10.1` | `v4.0.5` |
+| `1.35` | `1.35.3` | `2.2.3` | `3.31.3` | `v26.3.1` | `v4.0.5` |
+| `1.34` | `1.34.6` | `2.2.3` | `3.31.3` | `v26.3.1` | `v4.0.5` |
+| `1.33` | `1.33.10` | `2.2.3` | `3.31.3` | `v26.3.1` | `v4.0.5` |
 
 The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single source of truth.
 
@@ -79,5 +79,5 @@ The versions currently pinned in this repository were selected from the latest u
 - Kubernetes support/release pages: `1.35.3`, `1.34.6`, `1.33.10`
 - containerd GitHub releases: `2.2.3`
 - Project Calico GitHub releases: `3.31.3`
-- NVIDIA GPU Operator docs/releases: `v25.10.1`
+- NVIDIA GPU Operator docs/releases: `v26.3.1`
 - Helm GitHub releases: `v4.0.5`
