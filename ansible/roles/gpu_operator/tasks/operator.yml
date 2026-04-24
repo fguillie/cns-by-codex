@@ -1,0 +1,120 @@
+---
+- name: Label GPU Operator namespace for privileged PSA
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - label
+      - namespace
+      - "{{ gpu_operator_namespace }}"
+      - pod-security.kubernetes.io/enforce=privileged
+      - --overwrite
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  failed_when: false
+  changed_when: false
+
+- name: Ensure GPU Operator namespace exists
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - create
+      - namespace
+      - "{{ gpu_operator_namespace }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: gpu_namespace_create
+  failed_when: gpu_namespace_create.rc != 0 and 'AlreadyExists' not in gpu_namespace_create.stderr
+  changed_when: gpu_namespace_create.rc == 0
+
+- name: Label GPU Operator namespace after creation
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - label
+      - namespace
+      - "{{ gpu_operator_namespace }}"
+      - pod-security.kubernetes.io/enforce=privileged
+      - --overwrite
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: Check configured Helm repositories
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - repo
+      - list
+  register: helm_repo_list
+  changed_when: false
+
+- name: Inspect current GPU Operator release
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - list
+      - --namespace
+      - "{{ gpu_operator_namespace }}"
+      - -o
+      - json
+  register: gpu_operator_release_list
+  changed_when: false
+
+- name: Add NVIDIA Helm repository
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - repo
+      - add
+      - "{{ gpu_operator_repo_name }}"
+      - "{{ gpu_operator_repo_url }}"
+  register: helm_repo_add
+  failed_when: helm_repo_add.rc != 0
+  changed_when: helm_repo_add.rc == 0
+  when: gpu_operator_repo_url not in helm_repo_list.stdout
+
+- name: Update Helm repositories
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - repo
+      - update
+  changed_when: false
+
+- name: Install or upgrade GPU Operator
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - upgrade
+      - --install
+      - "{{ gpu_operator_release_name }}"
+      - "{{ gpu_operator_chart }}"
+      - --namespace
+      - "{{ gpu_operator_namespace }}"
+      - --version={{ gpu_operator_version }}
+      - --wait
+      - --timeout=20m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: gpu_operator_install
+  changed_when: "'STATUS: deployed' in gpu_operator_install.stdout or 'STATUS: pending-upgrade' in gpu_operator_install.stdout"
+  when: >
+    gpu_operator_release_list.stdout == '[]' or
+    ('"status":"deployed"' not in gpu_operator_release_list.stdout) or
+    ('"chart":"gpu-operator-' ~ gpu_operator_version ~ '"' not in gpu_operator_release_list.stdout)
+
+- name: Wait for GPU Operator pods to appear
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - get
+      - pods
+      - -n
+      - "{{ gpu_operator_namespace }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: gpu_operator_pods
+  retries: 20
+  delay: 15
+  until: gpu_operator_pods.rc == 0 and ('gpu-operator' in gpu_operator_pods.stdout or 'nvidia' in gpu_operator_pods.stdout)
+  changed_when: false

@@ -1,0 +1,9 @@
+---
+cns_stack_version: "1.34"
+kubernetes_series: "1.34"
+kubernetes_version: "1.34.6"
+kubernetes_package_version: "1.34.6-1.1"
+containerd_version: "2.2.3"
+calico_version: "3.31.3"
+gpu_operator_version: "v25.10.1"
+helm_version: "v4.0.5"

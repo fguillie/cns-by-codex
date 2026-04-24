@@ -1,0 +1,61 @@
+---
+- name: Check whether the cluster is already initialized
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubernetes_admin_conf
+
+- name: Initialize single-node control plane
+  ansible.builtin.command:
+    argv:
+      - kubeadm
+      - init
+      - --kubernetes-version={{ kubernetes_version }}
+      - --pod-network-cidr={{ cns_pod_cidr }}
+      - --service-cidr={{ cns_service_cidr }}
+      - --cri-socket={{ kubernetes_cri_socket }}
+      - --node-name={{ ansible_hostname }}
+  when: not kubernetes_admin_conf.stat.exists
+  register: kubeadm_init
+  changed_when: not kubernetes_admin_conf.stat.exists
+
+- name: Ensure kube config directory exists
+  ansible.builtin.file:
+    path: "{{ cns_admin_home }}/.kube"
+    state: directory
+    owner: "{{ cns_admin_user }}"
+    group: "{{ cns_admin_user }}"
+    mode: "0700"
+
+- name: Copy admin kubeconfig to selected user
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ cns_admin_home }}/.kube/config"
+    owner: "{{ cns_admin_user }}"
+    group: "{{ cns_admin_user }}"
+    mode: "0600"
+    remote_src: true
+
+- name: Enable and start kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    state: started
+    enabled: true
+
+- name: Wait for API server kubeconfig
+  ansible.builtin.wait_for:
+    path: /etc/kubernetes/admin.conf
+    timeout: 300
+
+- name: Remove control-plane taint for single-node scheduling
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - taint
+      - nodes
+      - --all
+      - node-role.kubernetes.io/control-plane-
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: taint_result
+  failed_when: false
+  changed_when: "'untainted' in taint_result.stdout"

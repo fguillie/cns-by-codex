@@ -1,0 +1,79 @@
+---
+- name: Download containerd archive
+  ansible.builtin.get_url:
+    url: "{{ containerd_archive_url }}"
+    dest: "{{ containerd_archive_path }}"
+    mode: "0644"
+
+- name: Install containerd binaries
+  ansible.builtin.unarchive:
+    src: "{{ containerd_archive_path }}"
+    dest: /usr/local
+    remote_src: true
+
+- name: Download runc binary
+  ansible.builtin.get_url:
+    url: "{{ runc_binary_url }}"
+    dest: "{{ runc_binary_path }}"
+    mode: "0755"
+
+- name: Create CNI plugin directory
+  ansible.builtin.file:
+    path: "{{ cni_bin_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Download CNI plugins
+  ansible.builtin.get_url:
+    url: "{{ cni_plugins_url }}"
+    dest: "{{ cni_plugins_archive_path }}"
+    mode: "0644"
+
+- name: Install CNI plugins
+  ansible.builtin.unarchive:
+    src: "{{ cni_plugins_archive_path }}"
+    dest: "{{ cni_bin_dir }}"
+    remote_src: true
+    creates: "{{ cni_bin_dir }}/host-local"
+
+- name: Create containerd configuration directory
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: "0755"
+
+- name: Check whether Kubernetes is already initialized
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: containerd_kubernetes_initialized
+
+- name: Create systemd unit directory for containerd
+  ansible.builtin.file:
+    path: /usr/local/lib/systemd/system
+    state: directory
+    mode: "0755"
+
+- name: Install containerd systemd unit
+  ansible.builtin.template:
+    src: containerd.service.j2
+    dest: /usr/local/lib/systemd/system/containerd.service
+    mode: "0644"
+  notify: Restart containerd
+
+- name: Install containerd config
+  ansible.builtin.template:
+    src: config.toml.j2
+    dest: /etc/containerd/config.toml
+    mode: "0644"
+  notify: Restart containerd
+  when: not containerd_kubernetes_initialized.stat.exists
+
+- name: Flush containerd handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure containerd is enabled and running
+  ansible.builtin.systemd:
+    name: "{{ containerd_service_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true

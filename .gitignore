@@ -1,0 +1,10 @@
+.ansible/
+*.retry
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+*.pyc
+*.swp
+*.swo
+

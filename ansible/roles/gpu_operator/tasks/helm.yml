@@ -1,0 +1,20 @@
+---
+- name: Download Helm archive
+  ansible.builtin.get_url:
+    url: "{{ helm_archive_url }}"
+    dest: "{{ helm_archive_path }}"
+    mode: "0644"
+
+- name: Install Helm binary
+  ansible.builtin.unarchive:
+    src: "{{ helm_archive_path }}"
+    dest: /tmp
+    remote_src: true
+    creates: /tmp/linux-amd64/helm
+
+- name: Copy Helm binary into place
+  ansible.builtin.copy:
+    src: /tmp/linux-amd64/helm
+    dest: "{{ helm_binary_path }}"
+    mode: "0755"
+    remote_src: true

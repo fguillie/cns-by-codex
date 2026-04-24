@@ -1,0 +1,91 @@
+---
+- name: Try to remove Calico resources
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/kubectl
+      - delete
+      - -f
+      - "{{ calico_manifest_url }}"
+      - --ignore-not-found=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: calico_delete
+  failed_when: false
+  changed_when: calico_delete.rc == 0
+
+- name: Reset kubeadm state
+  ansible.builtin.command:
+    argv:
+      - kubeadm
+      - reset
+      - -f
+  register: kubeadm_reset
+  failed_when: false
+  changed_when: kubeadm_reset.rc == 0
+
+- name: Stop kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Stop containerd
+  ansible.builtin.systemd:
+    name: "{{ containerd_service_name }}"
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Unhold Kubernetes packages before removal
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: install
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+  failed_when: false
+
+- name: Remove Kubernetes packages
+  ansible.builtin.apt:
+    name:
+      - kubeadm
+      - kubelet
+      - kubectl
+    state: absent
+    purge: true
+    autoremove: true
+
+- name: Remove Kubernetes directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/kubernetes
+    - /var/lib/etcd
+    - /var/lib/kubelet
+    - /etc/cni/net.d
+    - /var/lib/cni
+    - /var/lib/calico
+    - "{{ cns_admin_home }}/.kube"
+
+- name: Remove containerd binaries and configuration
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/bin/containerd
+    - /usr/local/bin/containerd-shim-runc-v2
+    - /usr/local/bin/containerd-shim
+    - /usr/local/bin/containerd-stress
+    - /usr/local/bin/ctr
+    - /usr/local/bin/containerd-shim-runc-v1
+    - "{{ runc_binary_path }}"
+    - /etc/containerd
+    - /usr/local/lib/systemd/system/containerd.service
+    - "{{ cni_bin_dir }}"
+
+- name: Reload systemd after uninstall
+  ansible.builtin.systemd:
+    daemon_reload: true

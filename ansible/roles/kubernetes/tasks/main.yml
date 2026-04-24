@@ -1,0 +1,8 @@
+---
+- name: Run install workflow
+  ansible.builtin.include_tasks: install.yml
+  when: cns_action == 'install'
+
+- name: Run uninstall workflow
+  ansible.builtin.include_tasks: uninstall.yml
+  when: cns_action == 'uninstall'

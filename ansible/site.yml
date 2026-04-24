@@ -1,0 +1,47 @@
+---
+- name: Install or uninstall CNS on a single node
+  hosts: cns_nodes
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Validate requested action
+      ansible.builtin.assert:
+        that:
+          - cns_action in ['install', 'uninstall']
+        fail_msg: "cns_action must be either 'install' or 'uninstall'."
+
+    - name: Validate stack variables for installs
+      ansible.builtin.assert:
+        that:
+          - cns_stack_version is defined
+          - kubernetes_series is defined
+          - kubernetes_version is defined
+          - kubernetes_package_version is defined
+          - containerd_version is defined
+          - calico_version is defined
+          - gpu_operator_version is defined
+          - helm_version is defined
+        fail_msg: "Install requires a stack file from stacks/<version>.yml."
+      when: cns_action == 'install'
+
+  tasks:
+    - name: Uninstall GPU Operator first
+      ansible.builtin.import_role:
+        name: gpu_operator
+      when: cns_action == 'uninstall'
+
+    - name: Uninstall Kubernetes stack
+      ansible.builtin.import_role:
+        name: kubernetes
+      when: cns_action == 'uninstall'
+
+    - name: Install Kubernetes stack
+      ansible.builtin.import_role:
+        name: kubernetes
+      when: cns_action == 'install'
+
+    - name: Install GPU Operator
+      ansible.builtin.import_role:
+        name: gpu_operator
+      when: cns_action == 'install'

@@ -1,0 +1,6 @@
+---
+- name: Install Helm
+  ansible.builtin.include_tasks: helm.yml
+
+- name: Deploy GPU Operator
+  ansible.builtin.include_tasks: operator.yml

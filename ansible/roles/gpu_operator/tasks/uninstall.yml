@@ -1,0 +1,41 @@
+---
+- name: Check for Kubernetes admin kubeconfig
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: gpu_operator_kubeconfig
+
+- name: Uninstall GPU Operator release
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - uninstall
+      - "{{ gpu_operator_release_name }}"
+      - --namespace
+      - "{{ gpu_operator_namespace }}"
+      - --ignore-not-found
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: gpu_operator_uninstall
+  failed_when: false
+  changed_when: gpu_operator_uninstall.rc == 0
+  when: gpu_operator_kubeconfig.stat.exists
+
+- name: Remove GPU Operator namespace
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - delete
+      - namespace
+      - "{{ gpu_operator_namespace }}"
+      - --ignore-not-found=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: gpu_operator_ns_delete
+  failed_when: false
+  changed_when: gpu_operator_ns_delete.rc == 0
+  when: gpu_operator_kubeconfig.stat.exists
+
+- name: Remove Helm binary
+  ansible.builtin.file:
+    path: "{{ helm_binary_path }}"
+    state: absent
