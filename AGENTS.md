@@ -17,6 +17,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Stack definitions live only in [`stacks/`](/nvidia/CODEX/CNS/stacks/1.35.yml:1).
 - One file exists per supported Kubernetes minor branch.
 - Do not hardcode component versions in the roles or shell wrapper when they belong in a stack file.
+- The currently pinned GPU Operator line is `v26.3.1`.
 
 ## Repo Structure
 
@@ -34,6 +35,15 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Keep `cns.sh uninstall` runnable without requiring a stack file.
 - Prefer reproducible pinned versions over dynamic `latest` lookups at runtime.
 - Do not add hidden version logic outside the stack manifests.
+- Do not remove the containerd drop-in import flow without revalidating GPU Operator on a live host. `v26.3.1` required:
+  - `/etc/containerd/conf.d`
+  - `imports = ["/etc/containerd/conf.d/*.toml"]` in `/etc/containerd/config.toml`
+  - `operator.defaultRuntime=containerd` in the Helm install path
+
+## Inventory
+
+- [`ansible/inventory/hosts.ini`](/nvidia/CODEX/CNS/ansible/inventory/hosts.ini:1) is currently checked in with the tested QA host and working credentials.
+- If that inventory is changed for local development, be explicit about whether the repo should keep the live QA values or revert to a commented example before committing.
 
 ## Testing
 
@@ -50,14 +60,18 @@ If remote QA is requested and credentials are available, use the target inventor
 1. `install`
 2. immediate `install` rerun for idempotency
 3. `uninstall`
+4. `./cns.sh install <stack-version>`
+5. `./cns.sh uninstall`
 
 The reference QA host used during development was `10.86.9.190`.
+The wrapper path `cns.sh` was validated directly against that host for `1.35`.
 
 ## Idempotency Expectations
 
 - An install rerun on an already deployed stack should converge cleanly.
 - Uninstall should succeed even if the node is partially cleaned already.
 - Avoid unconditional `kubectl apply`, `helm upgrade`, or config rewrites when the deployed state already matches the desired version.
+- For the validated `1.35` path, a steady-state install rerun should complete with `changed=0`.
 
 ## Git
 
