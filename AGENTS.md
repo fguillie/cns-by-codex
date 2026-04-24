@@ -87,5 +87,7 @@ The wrapper path `cns.sh` was validated directly against that host for `1.35`.
 ## Git
 
 - Default branch is `main`.
+- Current feature branch for GPU Operator `26.4.0` work is `26.4.0`.
+- The `26.4.0` branch is published as `origin/26.4.0`.
 - Keep commits focused and non-interactive.
 - Do not rewrite history unless explicitly requested.
