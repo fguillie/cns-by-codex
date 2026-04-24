@@ -42,6 +42,15 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
   - `imports = ["/etc/containerd/conf.d/*.toml"]` in `/etc/containerd/config.toml`
   - `operator.defaultRuntime=containerd` in the Helm install path
 
+## Install Flow
+
+- `./cns.sh install <stack-version>` sets `cns_action=install` and loads the selected stack file.
+- The playbook validates the action and stack variables first.
+- The `precheck` role runs only when `cns_action == 'install'`.
+- The `precheck` role runs before the `kubernetes` and `gpu_operator` roles.
+- The `precheck` role is not launched by `./cns.sh uninstall`.
+- Inside the `precheck` role, cleanup is skipped when `/etc/kubernetes/admin.conf` already exists so steady-state install reruns do not remove GPU Operator-managed drivers.
+
 ## Inventory
 
 - [`ansible/inventory/hosts.ini`](/nvidia/CODEX/CNS/ansible/inventory/hosts.ini:1) is currently checked in with the tested QA host and working credentials.
