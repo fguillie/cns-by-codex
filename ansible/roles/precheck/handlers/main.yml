@@ -1,0 +1,8 @@
+---
+- name: Update initramfs
+  ansible.builtin.command:
+    argv:
+      - update-initramfs
+      - -u
+  changed_when: true
+

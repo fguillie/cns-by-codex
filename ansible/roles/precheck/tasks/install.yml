@@ -1,0 +1,109 @@
+---
+- name: Check whether Kubernetes is already initialized
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: precheck_kubernetes_initialized
+
+- name: Skip driver cleanup on already initialized CNS nodes
+  ansible.builtin.meta: end_role
+  when: precheck_kubernetes_initialized.stat.exists
+
+- name: Check whether Nouveau module is active
+  ansible.builtin.command:
+    argv:
+      - lsmod
+  register: precheck_lsmod_initial
+  changed_when: false
+
+- name: Check installed Nouveau packages
+  ansible.builtin.shell: |
+    set -o pipefail
+    dpkg-query -W -f='${binary:Package}\n' {{ precheck_nouveau_packages | join(' ') }} 2>/dev/null | sort -u
+  args:
+    executable: /bin/bash
+  register: precheck_nouveau_installed_packages
+  changed_when: false
+  failed_when: false
+
+- name: Remove installed Nouveau packages
+  ansible.builtin.apt:
+    name: "{{ precheck_nouveau_installed_packages.stdout_lines }}"
+    state: absent
+    purge: true
+    autoremove: true
+  when: precheck_nouveau_installed_packages.stdout_lines | length > 0
+
+- name: Disable Nouveau module loading
+  ansible.builtin.copy:
+    dest: "{{ precheck_nouveau_blacklist_file }}"
+    mode: "0644"
+    content: |
+      blacklist nouveau
+      options nouveau modeset=0
+  when: >
+    'nouveau' in precheck_lsmod_initial.stdout or
+    precheck_nouveau_installed_packages.stdout_lines | length > 0
+  notify: Update initramfs
+
+- name: Try to unload Nouveau when active
+  ansible.builtin.command:
+    argv:
+      - modprobe
+      - -r
+      - nouveau
+  register: precheck_unload_nouveau
+  failed_when: false
+  changed_when: precheck_unload_nouveau.rc == 0
+  when: "'nouveau' in precheck_lsmod_initial.stdout"
+
+- name: Check installed CUDA and NVIDIA driver packages
+  ansible.builtin.shell: |
+    set -o pipefail
+    dpkg-query -W -f='${binary:Package}\n' {{ precheck_cuda_package_patterns | join(' ') }} 2>/dev/null | sort -u
+  args:
+    executable: /bin/bash
+  register: precheck_cuda_packages
+  changed_when: false
+  failed_when: false
+
+- name: Remove CUDA and NVIDIA driver packages
+  ansible.builtin.apt:
+    name: "{{ precheck_cuda_packages.stdout_lines }}"
+    state: absent
+    purge: true
+    autoremove: true
+  when: precheck_cuda_packages.stdout_lines | length > 0
+  notify: Update initramfs
+
+- name: Try to unload NVIDIA kernel modules when active
+  ansible.builtin.command:
+    argv:
+      - rmmod
+      - "{{ item }}"
+  loop: "{{ precheck_nvidia_kernel_modules }}"
+  register: precheck_unload_nvidia
+  failed_when: false
+  changed_when: precheck_unload_nvidia.rc == 0
+  when: "'nvidia' in precheck_lsmod_initial.stdout"
+
+- name: Flush pre-check handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Re-check loaded kernel modules
+  ansible.builtin.command:
+    argv:
+      - lsmod
+  register: precheck_lsmod_final
+  changed_when: false
+
+- name: Validate Nouveau is not active
+  ansible.builtin.assert:
+    that:
+      - "'nouveau' not in precheck_lsmod_final.stdout"
+    fail_msg: "Nouveau is still active. Reboot the node and rerun CNS install."
+
+- name: Validate CUDA/NVIDIA driver modules are not active
+  ansible.builtin.assert:
+    that:
+      - "'nvidia' not in precheck_lsmod_final.stdout"
+    fail_msg: "An NVIDIA/CUDA driver kernel module is still active. Reboot the node and rerun CNS install."

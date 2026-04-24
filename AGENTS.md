@@ -23,6 +23,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 
 - [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1): CLI wrapper for `install`, `uninstall`, and `help`
 - [`ansible/site.yml`](/nvidia/CODEX/CNS/ansible/site.yml:1): top-level playbook
+- [`ansible/roles/precheck`](/nvidia/CODEX/CNS/ansible/roles/precheck/tasks/main.yml:1): install-time driver cleanup and validation
 - [`ansible/roles/kubernetes`](/nvidia/CODEX/CNS/ansible/roles/kubernetes/tasks/main.yml:1): host prep, containerd, Kubernetes, Calico
 - [`ansible/roles/gpu_operator`](/nvidia/CODEX/CNS/ansible/roles/gpu_operator/tasks/main.yml:1): Helm and GPU Operator deployment
 - [`ansible/inventory/hosts.ini`](/nvidia/CODEX/CNS/ansible/inventory/hosts.ini:1): user-edited target inventory
@@ -35,6 +36,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Keep `cns.sh uninstall` runnable without requiring a stack file.
 - Prefer reproducible pinned versions over dynamic `latest` lookups at runtime.
 - Do not add hidden version logic outside the stack manifests.
+- Keep install-time driver cleanup in the `precheck` role, before Kubernetes and GPU Operator roles.
 - Do not remove the containerd drop-in import flow without revalidating GPU Operator on a live host. `v26.3.1` required:
   - `/etc/containerd/conf.d`
   - `imports = ["/etc/containerd/conf.d/*.toml"]` in `/etc/containerd/config.toml`

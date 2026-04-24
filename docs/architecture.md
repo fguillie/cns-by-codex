@@ -6,13 +6,14 @@ CNS targets one Ubuntu 24.04 node and turns it into a combined control-plane and
 
 The deployment sequence is:
 
-1. Prepare the host for Kubernetes.
-2. Install and configure `containerd`.
-3. Install `kubeadm`, `kubelet`, and `kubectl`.
-4. Bootstrap the cluster with `kubeadm init`.
-5. Install Calico.
-6. Install Helm.
-7. Deploy the NVIDIA GPU Operator.
+1. Run pre-checks to remove host CUDA/NVIDIA drivers and disable Nouveau.
+2. Prepare the host for Kubernetes.
+3. Install and configure `containerd`.
+4. Install `kubeadm`, `kubelet`, and `kubectl`.
+5. Bootstrap the cluster with `kubeadm init`.
+6. Install Calico.
+7. Install Helm.
+8. Deploy the NVIDIA GPU Operator.
 
 ## Main Components
 
@@ -24,6 +25,8 @@ The deployment sequence is:
   - Hold pinned component versions for each CNS stack.
 - `ansible/roles/kubernetes`
   - Handles host prep, containerd, Kubernetes, and Calico.
+- `ansible/roles/precheck`
+  - Removes active host CUDA/NVIDIA driver packages and disables Nouveau before install.
 - `ansible/roles/gpu_operator`
   - Handles Helm and GPU Operator deployment.
 

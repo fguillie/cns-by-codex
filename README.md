@@ -24,6 +24,7 @@ CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `co
 ├── ansible/
 │   ├── inventory/hosts.ini
 │   ├── group_vars/all.yml
+│   ├── roles/precheck/
 │   ├── roles/kubernetes/
 │   └── roles/gpu_operator/
 └── docs/
@@ -48,6 +49,7 @@ The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single sourc
 - One reachable Ubuntu 24.04 target node
 - Internet access from the target node to Kubernetes, GitHub, Helm, and NVIDIA artifact endpoints
 - NVIDIA GPU present on the target node for full GPU Operator validation
+- CNS install removes active host CUDA/NVIDIA driver packages and disables Nouveau before Kubernetes deployment
 
 ## Quick Start
 

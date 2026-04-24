@@ -1,0 +1,5 @@
+---
+- name: Run install pre-checks
+  ansible.builtin.include_tasks: install.yml
+  when: cns_action == 'install'
+

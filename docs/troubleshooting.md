@@ -16,6 +16,12 @@
 - Verify swap is disabled.
 - Confirm the node hostname resolves correctly.
 
+## Pre-Checks Fail
+
+- If Nouveau is still active after cleanup, reboot the node and rerun `./cns.sh install <stack-version>`.
+- If an NVIDIA/CUDA kernel module is still active after package removal, reboot the node and rerun the install.
+- CNS removes host CUDA/NVIDIA driver packages before installing GPU Operator so the operator can manage the driver stack.
+
 ## Calico Pods Stay Pending
 
 - Verify the pod CIDR is `192.168.0.0/16`.

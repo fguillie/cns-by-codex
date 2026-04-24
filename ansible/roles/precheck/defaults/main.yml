@@ -1,0 +1,19 @@
+---
+precheck_nouveau_blacklist_file: /etc/modprobe.d/cns-disable-nouveau.conf
+precheck_nouveau_packages:
+  - xserver-xorg-video-nouveau
+precheck_cuda_package_patterns:
+  - "cuda-*"
+  - "nvidia-cuda-*"
+  - "libcuda*"
+  - "nvidia-driver-*"
+  - "nvidia-dkms-*"
+  - "nvidia-kernel-*"
+  - "nvidia-utils-*"
+  - "libnvidia-*"
+precheck_nvidia_kernel_modules:
+  - nvidia_drm
+  - nvidia_uvm
+  - nvidia_peermem
+  - nvidia_modeset
+  - nvidia

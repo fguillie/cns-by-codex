@@ -36,6 +36,11 @@
         name: kubernetes
       when: cns_action == 'uninstall'
 
+    - name: Run install pre-checks
+      ansible.builtin.import_role:
+        name: precheck
+      when: cns_action == 'install'
+
     - name: Install Kubernetes stack
       ansible.builtin.import_role:
         name: kubernetes
