@@ -1,3 +1,5 @@
+<!-- Lists common CNS installation and runtime issues with fixes. -->
+
 # Troubleshooting
 
 ## SSH Authentication Fails

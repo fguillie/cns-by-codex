@@ -1,4 +1,5 @@
 ---
+# Installs pinned Kubernetes packages from the Kubernetes apt repository.
 - name: Create apt keyring directory
   ansible.builtin.file:
     path: /etc/apt/keyrings

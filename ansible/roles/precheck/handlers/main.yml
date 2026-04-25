@@ -1,8 +1,8 @@
 ---
+# Defines handlers used by precheck driver cleanup tasks.
 - name: Update initramfs
   ansible.builtin.command:
     argv:
       - update-initramfs
       - -u
   changed_when: true
-

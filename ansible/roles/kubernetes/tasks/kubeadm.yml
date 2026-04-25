@@ -1,4 +1,5 @@
 ---
+# Initializes the single-node kubeadm control plane and admin kubeconfig.
 - name: Check whether the cluster is already initialized
   ansible.builtin.stat:
     path: /etc/kubernetes/admin.conf

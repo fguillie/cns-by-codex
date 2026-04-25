@@ -1,2 +1,3 @@
 ---
+# Defines GPU Operator role defaults.
 gpu_operator_values_args: []

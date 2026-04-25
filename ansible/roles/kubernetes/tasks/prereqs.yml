@@ -1,4 +1,5 @@
 ---
+# Prepares the Ubuntu host for Kubernetes installation.
 - name: Verify supported operating system
   ansible.builtin.assert:
     that:

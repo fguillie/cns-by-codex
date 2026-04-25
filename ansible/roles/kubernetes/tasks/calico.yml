@@ -1,4 +1,5 @@
 ---
+# Applies and verifies Calico networking for the CNS cluster.
 - name: Validate supported pod CIDR for Calico manifest
   ansible.builtin.assert:
     that:

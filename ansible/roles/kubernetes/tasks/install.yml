@@ -1,4 +1,5 @@
 ---
+# Runs the Kubernetes install task sequence.
 - name: Prepare the host
   ansible.builtin.include_tasks: prereqs.yml
 

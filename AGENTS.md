@@ -1,3 +1,5 @@
+<!-- Defines repository-specific instructions and constraints for CNS contributors. -->
+
 # AGENTS
 
 ## Purpose

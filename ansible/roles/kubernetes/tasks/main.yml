@@ -1,4 +1,5 @@
 ---
+# Resolves admin account details and dispatches Kubernetes install or uninstall tasks.
 - name: Resolve selected admin user account
   ansible.builtin.getent:
     database: passwd

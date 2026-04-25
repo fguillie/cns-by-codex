@@ -1,3 +1,5 @@
+<!-- Introduces CNS and links users to installation, architecture, and troubleshooting docs. -->
+
 # CNS
 
 CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `containerd`, Calico, Helm, and the NVIDIA GPU Operator. The project is built around an Ansible playbook and a thin shell wrapper:

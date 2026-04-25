@@ -1,4 +1,5 @@
 ---
+# Removes the NVIDIA GPU Operator release when Kubernetes is available.
 - name: Check for Kubernetes admin kubeconfig
   ansible.builtin.stat:
     path: /etc/kubernetes/admin.conf
