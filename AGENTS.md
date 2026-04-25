@@ -45,6 +45,14 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
   - `imports = ["/etc/containerd/conf.d/*.toml"]` in `/etc/containerd/config.toml`
   - `operator.defaultRuntime=containerd` in the Helm install path
 
+## File Headers
+
+- Keep concise file-purpose header comments at the top of every tracked text file.
+- For shell scripts, preserve the shebang as the first line and place the header comment immediately after it.
+- For YAML files, preserve the `---` document marker as the first line and place the header comment after it.
+- For Markdown files with visible titles, use a short HTML comment before the title instead of adding another visible heading.
+- For templates and config files, use the native comment syntax for the rendered file format.
+
 ## Install Flow
 
 - `./cns.sh install <stack-version>` sets `cns_action=install` and loads the selected stack file.
