@@ -1,4 +1,14 @@
 ---
+- name: Resolve selected admin user account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ cns_admin_user }}"
+  when: cns_admin_user != 'root'
+
+- name: Set selected admin home
+  ansible.builtin.set_fact:
+    cns_admin_home: "{{ '/root' if cns_admin_user == 'root' else ansible_facts.getent_passwd[cns_admin_user][4] }}"
+
 - name: Run install workflow
   ansible.builtin.include_tasks: install.yml
   when: cns_action == 'install'
