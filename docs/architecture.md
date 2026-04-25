@@ -1,3 +1,5 @@
+<!-- Documents the CNS deployment model and component flow. -->
+
 # CNS Architecture
 
 ## Deployment Model

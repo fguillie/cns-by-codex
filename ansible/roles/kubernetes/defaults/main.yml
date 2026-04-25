@@ -1,2 +1,3 @@
 ---
+# Defines Kubernetes role defaults.
 kubernetes_packages_state: present

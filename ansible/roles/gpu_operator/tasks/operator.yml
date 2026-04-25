@@ -1,4 +1,5 @@
 ---
+# Deploys and verifies the NVIDIA GPU Operator release.
 - name: Label GPU Operator namespace for privileged PSA
   ansible.builtin.command:
     argv:

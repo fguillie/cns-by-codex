@@ -1,4 +1,5 @@
 ---
+# Removes Kubernetes, containerd, and related CNS host state.
 - name: Try to remove Calico resources
   ansible.builtin.command:
     argv:

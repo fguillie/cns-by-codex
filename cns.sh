@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Runs the CNS Ansible playbook for install, uninstall, and help commands.
 
 set -euo pipefail
 

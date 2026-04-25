@@ -1,4 +1,5 @@
 ---
+# Coordinates validation and CNS role execution for install and uninstall actions.
 - name: Install or uninstall CNS on a single node
   hosts: cns_nodes
   become: true

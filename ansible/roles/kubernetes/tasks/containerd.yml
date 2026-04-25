@@ -1,4 +1,5 @@
 ---
+# Installs and configures containerd for Kubernetes and GPU Operator workloads.
 - name: Download containerd archive
   ansible.builtin.get_url:
     url: "{{ containerd_archive_url }}"

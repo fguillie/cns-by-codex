@@ -1,4 +1,5 @@
 ---
+# Cleans conflicting NVIDIA/CUDA driver state before a fresh install.
 - name: Check whether Kubernetes is already initialized
   ansible.builtin.stat:
     path: /etc/kubernetes/admin.conf

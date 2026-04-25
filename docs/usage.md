@@ -1,3 +1,5 @@
+<!-- Explains CNS inventory setup and install/uninstall commands. -->
+
 # Usage
 
 ## Inventory

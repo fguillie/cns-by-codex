@@ -1,4 +1,5 @@
 ---
+# Defines precheck role defaults for driver cleanup.
 precheck_nouveau_blacklist_file: /etc/modprobe.d/cns-disable-nouveau.conf
 precheck_nouveau_packages:
   - xserver-xorg-video-nouveau

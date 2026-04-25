@@ -1,4 +1,5 @@
 ---
+# Dispatches GPU Operator tasks for install or uninstall actions.
 - name: Run install workflow
   ansible.builtin.include_tasks: install.yml
   when: cns_action == 'install'
