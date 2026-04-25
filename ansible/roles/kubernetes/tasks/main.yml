@@ -9,6 +9,25 @@
   ansible.builtin.set_fact:
     cns_admin_home: "{{ '/root' if cns_admin_user == 'root' else ansible_facts.getent_passwd[cns_admin_user][4] }}"
 
+- name: Check for legacy misplaced root kubeconfig
+  ansible.builtin.stat:
+    path: /root/.kube/config
+  register: kubernetes_legacy_root_kubeconfig
+  when:
+    - cns_admin_user != 'root'
+    - cns_admin_home != '/root'
+
+- name: Remove legacy misplaced root kubeconfig
+  ansible.builtin.file:
+    path: /root/.kube/config
+    state: absent
+  when:
+    - cns_admin_user != 'root'
+    - cns_admin_home != '/root'
+    - kubernetes_legacy_root_kubeconfig.stat is defined
+    - kubernetes_legacy_root_kubeconfig.stat.exists
+    - kubernetes_legacy_root_kubeconfig.stat.pw_name | default('') == cns_admin_user
+
 - name: Run install workflow
   ansible.builtin.include_tasks: install.yml
   when: cns_action == 'install'
