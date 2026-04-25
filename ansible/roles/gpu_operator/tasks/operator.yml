@@ -57,6 +57,8 @@
       - "{{ gpu_operator_namespace }}"
       - -o
       - json
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   register: gpu_operator_release_list
   changed_when: false
 
