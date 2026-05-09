@@ -23,7 +23,7 @@ ansible_python_interpreter=/usr/bin/python3
 ## Install
 
 ```bash
-./cns.sh install 1.35
+./cns.sh install 1.36
 ```
 
 This runs `ansible/site.yml` with the selected stack definition and installs the GPU Operator by default.
@@ -31,7 +31,7 @@ This runs `ansible/site.yml` with the selected stack definition and installs the
 To install only Kubernetes, containerd, and Calico without GPU Operator or host driver cleanup:
 
 ```bash
-./cns.sh install 1.35 --no-gpu-operator
+./cns.sh install 1.36 --no-gpu-operator
 ```
 
 ## Uninstall
@@ -47,8 +47,8 @@ You can bypass the shell wrapper if needed:
 ```bash
 ansible-playbook -i ansible/inventory/hosts.ini ansible/site.yml \
   -e cns_action=install \
-  -e cns_stack_version=1.35 \
-  -e @stacks/1.35.yml
+  -e cns_stack_version=1.36 \
+  -e @stacks/1.36.yml
 ```
 
 Set `-e cns_gpu_operator_enabled=false` to skip GPU Operator deployment when running Ansible directly.

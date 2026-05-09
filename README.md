@@ -38,9 +38,10 @@ CNS keeps one stack file per supported Kubernetes minor release branch.
 
 | CNS stack | Kubernetes | Containerd | Calico | GPU Operator | Helm |
 | --- | --- | --- | --- | --- | --- |
-| `1.35` | `1.35.3` | `2.2.3` | `3.31.3` | `v26.3.1` | `v4.0.5` |
-| `1.34` | `1.34.6` | `2.2.3` | `3.31.3` | `v26.3.1` | `v4.0.5` |
-| `1.33` | `1.33.10` | `2.2.3` | `3.31.3` | `v26.3.1` | `v4.0.5` |
+| `1.36` | `1.36.0` | `2.3.0` | `3.32.0` | `v26.3.1` | `v4.1.4` |
+| `1.35` | `1.35.4` | `2.3.0` | `3.32.0` | `v26.3.1` | `v4.1.4` |
+| `1.34` | `1.34.7` | `2.3.0` | `3.32.0` | `v26.3.1` | `v4.1.4` |
+| `1.33` | `1.33.11` | `2.3.0` | `3.32.0` | `v26.3.1` | `v4.1.4` |
 
 The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single source of truth.
 
@@ -62,13 +63,13 @@ The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single sourc
 
 ```bash
 chmod +x ./cns.sh
-./cns.sh install 1.35
+./cns.sh install 1.36
 ```
 
 To skip GPU Operator installation and leave host GPU drivers unmanaged by CNS:
 
 ```bash
-./cns.sh install 1.35 --no-gpu-operator
+./cns.sh install 1.36 --no-gpu-operator
 ```
 
 To remove the deployment:
@@ -85,10 +86,10 @@ To remove the deployment:
 
 ## Version Sources
 
-The versions currently pinned in this repository were selected from the latest upstream releases visible on April 24, 2026:
+The versions currently pinned in this repository are defined by the CNS 26.5.0 stack update:
 
-- Kubernetes support/release pages: `1.35.3`, `1.34.6`, `1.33.10`
-- containerd GitHub releases: `2.2.3`
-- Project Calico GitHub releases: `3.31.3`
+- Kubernetes support/release pages: `1.36.0`, `1.35.4`, `1.34.7`, `1.33.11`
+- containerd GitHub releases: `2.3.0`
+- Project Calico GitHub releases: `3.32.0`
 - NVIDIA GPU Operator docs/releases: `v26.3.1`
-- Helm GitHub releases: `v4.0.5`
+- Helm GitHub releases: `v4.1.4`

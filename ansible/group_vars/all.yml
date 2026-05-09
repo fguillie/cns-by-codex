@@ -1,6 +1,6 @@
 ---
 # Defines default CNS variables shared across roles.
-default_calico_version: "3.31.3"
+default_calico_version: "3.32.0"
 cns_action: install
 cns_cluster_name: cns
 cns_gpu_operator_enabled: true

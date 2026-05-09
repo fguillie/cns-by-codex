@@ -26,6 +26,7 @@ Install options:
   --no-gpu-operator        Skip GPU Operator and host driver cleanup.
 
 Available stack versions:
+  1.36
   1.35
   1.34
   1.33
