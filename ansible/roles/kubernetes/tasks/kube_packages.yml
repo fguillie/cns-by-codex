@@ -11,6 +11,11 @@
     url: "{{ kubernetes_apt_key_url }}"
     dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
     mode: "0644"
+    timeout: "{{ cns_download_timeout }}"
+  register: kubernetes_apt_key_download
+  retries: 3
+  delay: 10
+  until: kubernetes_apt_key_download is succeeded
 
 - name: Configure Kubernetes apt repository
   ansible.builtin.apt_repository:

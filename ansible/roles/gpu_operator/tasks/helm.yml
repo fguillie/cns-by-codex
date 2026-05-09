@@ -5,6 +5,11 @@
     url: "{{ helm_archive_url }}"
     dest: "{{ helm_archive_path }}"
     mode: "0644"
+    timeout: "{{ cns_download_timeout }}"
+  register: helm_archive_download
+  retries: 3
+  delay: 10
+  until: helm_archive_download is succeeded
 
 - name: Install Helm binary
   ansible.builtin.unarchive:

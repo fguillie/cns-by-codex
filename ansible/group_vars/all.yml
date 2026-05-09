@@ -8,6 +8,7 @@ cns_pod_cidr: 192.168.0.0/16
 cns_service_cidr: 10.96.0.0/12
 cns_admin_user: "{{ ansible_user | default('ubuntu') }}"
 cns_admin_home: "{{ '/root' if cns_admin_user == 'root' else (ansible_user_dir | default('/home/' ~ cns_admin_user)) }}"
+cns_download_timeout: 60
 
 kubernetes_cri_socket: unix:///run/containerd/containerd.sock
 kubernetes_packages:

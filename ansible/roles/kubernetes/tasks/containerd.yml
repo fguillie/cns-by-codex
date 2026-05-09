@@ -5,6 +5,11 @@
     url: "{{ containerd_archive_url }}"
     dest: "{{ containerd_archive_path }}"
     mode: "0644"
+    timeout: "{{ cns_download_timeout }}"
+  register: containerd_archive_download
+  retries: 3
+  delay: 10
+  until: containerd_archive_download is succeeded
 
 - name: Install containerd binaries
   ansible.builtin.unarchive:
@@ -17,6 +22,11 @@
     url: "{{ runc_binary_url }}"
     dest: "{{ runc_binary_path }}"
     mode: "0755"
+    timeout: "{{ cns_download_timeout }}"
+  register: runc_binary_download
+  retries: 3
+  delay: 10
+  until: runc_binary_download is succeeded
 
 - name: Create CNI plugin directory
   ansible.builtin.file:
@@ -29,6 +39,11 @@
     url: "{{ cni_plugins_url }}"
     dest: "{{ cni_plugins_archive_path }}"
     mode: "0644"
+    timeout: "{{ cns_download_timeout }}"
+  register: cni_plugins_download
+  retries: 3
+  delay: 10
+  until: cni_plugins_download is succeeded
 
 - name: Install CNI plugins
   ansible.builtin.unarchive:
@@ -54,6 +69,26 @@
     path: /etc/kubernetes/admin.conf
   register: containerd_kubernetes_initialized
 
+- name: Inspect current containerd config
+  ansible.builtin.stat:
+    path: /etc/containerd/config.toml
+  register: containerd_config_file
+
+- name: Read current containerd config
+  ansible.builtin.slurp:
+    path: /etc/containerd/config.toml
+  register: containerd_config_current
+  when: containerd_config_file.stat.exists
+
+- name: Decide whether CNS should install containerd config
+  ansible.builtin.set_fact:
+    containerd_config_needs_install: >-
+      {{
+        not containerd_kubernetes_initialized.stat.exists
+        or not containerd_config_file.stat.exists
+        or 'version = 4' not in (containerd_config_current.content | default('') | b64decode)
+      }}
+
 - name: Create systemd unit directory for containerd
   ansible.builtin.file:
     path: /usr/local/lib/systemd/system
@@ -73,7 +108,7 @@
     dest: /etc/containerd/config.toml
     mode: "0644"
   notify: Restart containerd
-  when: not containerd_kubernetes_initialized.stat.exists
+  when: containerd_config_needs_install | bool
 
 - name: Flush containerd handlers
   ansible.builtin.meta: flush_handlers
