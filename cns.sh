@@ -12,7 +12,7 @@ STACKS_DIR="${SCRIPT_DIR}/stacks"
 print_help() {
   cat <<'EOF'
 Usage:
-  ./cns.sh install <stack-version>
+  ./cns.sh install <stack-version> [--gpu-operator|--no-gpu-operator]
   ./cns.sh uninstall
   ./cns.sh help
 
@@ -20,6 +20,10 @@ Commands:
   install <stack-version>  Deploy the requested CNS stack version.
   uninstall                Remove the deployed CNS stack from the target node.
   help                     Show this help text.
+
+Install options:
+  --gpu-operator           Install the NVIDIA GPU Operator (default).
+  --no-gpu-operator        Skip GPU Operator and host driver cleanup.
 
 Available stack versions:
   1.35
@@ -42,13 +46,34 @@ require_file() {
 
 run_install() {
   local stack_version="${1:-}"
-  local stack_file="${STACKS_DIR}/${stack_version}.yml"
+  local gpu_operator_enabled="true"
+  local stack_file
 
-  if [[ -z "${stack_version}" ]]; then
+  if [[ -z "${stack_version}" || "${stack_version}" == --* ]]; then
     printf 'Missing stack version.\n\n' >&2
     print_help
     exit 1
   fi
+
+  shift || true
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --gpu-operator)
+        gpu_operator_enabled="true"
+        ;;
+      --no-gpu-operator)
+        gpu_operator_enabled="false"
+        ;;
+      *)
+        printf 'Unknown install option: %s\n\n' "$1" >&2
+        print_help
+        exit 1
+        ;;
+    esac
+    shift
+  done
+
+  stack_file="${STACKS_DIR}/${stack_version}.yml"
 
   require_file "${stack_file}"
   require_file "${INVENTORY_FILE}"
@@ -59,6 +84,7 @@ run_install() {
     "${PLAYBOOK_FILE}" \
     -e "cns_action=install" \
     -e "cns_stack_version=${stack_version}" \
+    -e "cns_gpu_operator_enabled=${gpu_operator_enabled}" \
     -e "@${stack_file}"
 }
 
@@ -78,7 +104,7 @@ main() {
   case "${command}" in
     install)
       shift || true
-      run_install "${1:-}"
+      run_install "$@"
       ;;
     uninstall)
       run_uninstall

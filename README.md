@@ -2,7 +2,7 @@
 
 # CNS
 
-CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `containerd`, Calico, Helm, and the NVIDIA GPU Operator. The project is built around an Ansible playbook and a thin shell wrapper:
+CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `containerd`, Calico, Helm, and optional NVIDIA GPU Operator support. The project is built around an Ansible playbook and a thin shell wrapper:
 
 ```bash
 ./cns.sh install <stack-version>
@@ -15,7 +15,7 @@ CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `co
 - Kubernetes bootstrap: `kubeadm`
 - Container runtime: `containerd`
 - CNI: Calico
-- GPU management: NVIDIA GPU Operator installed with Helm
+- GPU management: NVIDIA GPU Operator installed with Helm by default
 
 ## Repository Layout
 
@@ -49,9 +49,10 @@ The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single sourc
 - Ansible installed on the control machine
 - `sshpass` installed if you use password-based SSH auth
 - One reachable Ubuntu 24.04 target node
-- Internet access from the target node to Kubernetes, GitHub, Helm, and NVIDIA artifact endpoints
+- Internet access from the target node to Kubernetes and GitHub artifact endpoints
+- Internet access to Helm and NVIDIA artifact endpoints when GPU Operator is enabled
 - NVIDIA GPU present on the target node for full GPU Operator validation
-- CNS install removes active host CUDA/NVIDIA driver packages and disables Nouveau before Kubernetes deployment
+- When GPU Operator is enabled, CNS install removes active host CUDA/NVIDIA driver packages and disables Nouveau before Kubernetes deployment
 
 ## Quick Start
 
@@ -62,6 +63,12 @@ The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single sourc
 ```bash
 chmod +x ./cns.sh
 ./cns.sh install 1.35
+```
+
+To skip GPU Operator installation and leave host GPU drivers unmanaged by CNS:
+
+```bash
+./cns.sh install 1.35 --no-gpu-operator
 ```
 
 To remove the deployment:
