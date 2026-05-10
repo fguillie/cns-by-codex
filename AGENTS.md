@@ -33,6 +33,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - [`ansible/roles/nfs_provisioner`](/nvidia/CODEX/CNS/ansible/roles/nfs_provisioner/tasks/main.yml:1): NFS server export and `nfs-subdir-external-provisioner` deployment
 - [`ansible/roles/gpu_operator`](/nvidia/CODEX/CNS/ansible/roles/gpu_operator/tasks/main.yml:1): GPU Operator deployment
 - [`ansible/inventory/hosts.ini`](/nvidia/CODEX/CNS/ansible/inventory/hosts.ini:1): user-edited target inventory
+- [`tests/test_cns_matrix.py`](/nvidia/CODEX/CNS/tests/test_cns_matrix.py:1): live CNS release and option validation matrix
 - [`docs/`](/nvidia/CODEX/CNS/docs/usage.md:1): user documentation
 
 ## Change Rules
@@ -106,6 +107,7 @@ Minimum local checks before pushing:
 
 ```bash
 bash -n ./cns.sh
+python3 -m py_compile tests/test_cns_matrix.py
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.33.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.34.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.35.yml
@@ -114,6 +116,12 @@ ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml 
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e cns_nfs_provisioner_enabled=false -e @stacks/1.36.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e cns_gpu_operator_enabled=false -e cns_nfs_provisioner_enabled=false -e @stacks/1.36.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=uninstall
+```
+
+The live matrix script can automate the remote QA install, rerun, validation, uninstall, and cleanup checks. It discovers supported releases from `stacks/*.yml`, creates a temporary inventory instead of editing `ansible/inventory/hosts.ini`, and expects the target password from `CNS_TEST_PASSWORD` or `--password`.
+
+```bash
+CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
 ```
 
 If remote QA is requested and credentials are available, use the target inventory and validate:
