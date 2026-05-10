@@ -27,11 +27,18 @@ ansible_python_interpreter=/usr/bin/python3
 ```
 
 This runs `ansible/site.yml` with the selected stack definition and installs the GPU Operator by default.
+It also installs an NFS server, exports `/srv/cns/nfs`, deploys `nfs-subdir-external-provisioner`, and creates the default `nfs-client` StorageClass.
 
 To install only Kubernetes, containerd, and Calico without GPU Operator or host driver cleanup:
 
 ```bash
 ./cns.sh install 1.36 --no-gpu-operator
+```
+
+To skip NFS server and dynamic storage provisioner setup:
+
+```bash
+./cns.sh install 1.36 --no-nfs-provisioner
 ```
 
 ## Uninstall
@@ -52,6 +59,7 @@ ansible-playbook -i ansible/inventory/hosts.ini ansible/site.yml \
 ```
 
 Set `-e cns_gpu_operator_enabled=false` to skip GPU Operator deployment when running Ansible directly.
+Set `-e cns_nfs_provisioner_enabled=false` to skip NFS server and provisioner setup.
 
 ## Expected Outcome
 
@@ -59,5 +67,7 @@ After a successful install:
 
 - `kubectl get nodes` shows one `Ready` node
 - Calico pods are healthy
+- `kubectl get storageclass nfs-client` exists and is marked as the default StorageClass when NFS provisioner is enabled
 - With GPU Operator enabled, GPU Operator resources exist in the `gpu-operator` namespace
 - With `--no-gpu-operator`, host GPU driver management remains outside CNS
+- With `--no-nfs-provisioner`, NFS server and dynamic storage management remain outside CNS

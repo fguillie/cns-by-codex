@@ -1,0 +1,6 @@
+---
+# Removes the CNS-managed Helm client binary.
+- name: Remove Helm binary
+  ansible.builtin.file:
+    path: "{{ helm_binary_path }}"
+    state: absent

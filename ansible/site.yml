@@ -34,10 +34,30 @@
         - cns_action == 'install'
         - cns_gpu_operator_enabled | bool
 
+    - name: Validate NFS provisioner stack variables for installs
+      ansible.builtin.assert:
+        that:
+          - nfs_subdir_external_provisioner_version is defined
+          - helm_version is defined
+        fail_msg: "NFS provisioner install requires nfs_subdir_external_provisioner_version and helm_version in the selected stack file."
+      when:
+        - cns_action == 'install'
+        - cns_nfs_provisioner_enabled | bool
+
   tasks:
     - name: Uninstall GPU Operator first
       ansible.builtin.import_role:
         name: gpu_operator
+      when: cns_action == 'uninstall'
+
+    - name: Uninstall NFS provisioner
+      ansible.builtin.import_role:
+        name: nfs_provisioner
+      when: cns_action == 'uninstall'
+
+    - name: Remove Helm client
+      ansible.builtin.import_role:
+        name: helm_client
       when: cns_action == 'uninstall'
 
     - name: Uninstall Kubernetes stack
@@ -56,6 +76,20 @@
       ansible.builtin.import_role:
         name: kubernetes
       when: cns_action == 'install'
+
+    - name: Install Helm client
+      ansible.builtin.import_role:
+        name: helm_client
+      when:
+        - cns_action == 'install'
+        - (cns_gpu_operator_enabled | bool) or (cns_nfs_provisioner_enabled | bool)
+
+    - name: Install NFS provisioner
+      ansible.builtin.import_role:
+        name: nfs_provisioner
+      when:
+        - cns_action == 'install'
+        - cns_nfs_provisioner_enabled | bool
 
     - name: Install GPU Operator
       ansible.builtin.import_role:

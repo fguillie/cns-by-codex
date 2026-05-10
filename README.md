@@ -2,7 +2,7 @@
 
 # CNS
 
-CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `containerd`, Calico, Helm, and optional NVIDIA GPU Operator support. The project is built around an Ansible playbook and a thin shell wrapper:
+CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `containerd`, Calico, Helm, default NFS dynamic storage, and optional NVIDIA GPU Operator support. The project is built around an Ansible playbook and a thin shell wrapper:
 
 ```bash
 ./cns.sh install <stack-version>
@@ -15,6 +15,7 @@ CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `co
 - Kubernetes bootstrap: `kubeadm`
 - Container runtime: `containerd`
 - CNI: Calico
+- Dynamic storage: NFS server and `nfs-subdir-external-provisioner` installed by default
 - GPU management: NVIDIA GPU Operator installed with Helm by default
 
 ## Repository Layout
@@ -28,6 +29,8 @@ CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `co
 │   ├── group_vars/all.yml
 │   ├── roles/precheck/
 │   ├── roles/kubernetes/
+│   ├── roles/helm_client/
+│   ├── roles/nfs_provisioner/
 │   └── roles/gpu_operator/
 └── docs/
 ```
@@ -36,12 +39,12 @@ CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `co
 
 CNS keeps one stack file per supported Kubernetes minor release branch.
 
-| CNS stack | Kubernetes | Containerd | Calico | GPU Operator | Helm |
-| --- | --- | --- | --- | --- | --- |
-| `1.36` | `1.36.0` | `2.3.0` | `3.32.0` | `v26.3.1` | `v4.1.4` |
-| `1.35` | `1.35.4` | `2.3.0` | `3.32.0` | `v26.3.1` | `v4.1.4` |
-| `1.34` | `1.34.7` | `2.3.0` | `3.32.0` | `v26.3.1` | `v4.1.4` |
-| `1.33` | `1.33.11` | `2.3.0` | `3.32.0` | `v26.3.1` | `v4.1.4` |
+| CNS stack | Kubernetes | Containerd | Calico | NFS provisioner | GPU Operator | Helm |
+| --- | --- | --- | --- | --- | --- | --- |
+| `1.36` | `1.36.0` | `2.3.0` | `3.32.0` | `4.0.18` | `v26.3.1` | `v4.1.4` |
+| `1.35` | `1.35.4` | `2.3.0` | `3.32.0` | `4.0.18` | `v26.3.1` | `v4.1.4` |
+| `1.34` | `1.34.7` | `2.3.0` | `3.32.0` | `4.0.18` | `v26.3.1` | `v4.1.4` |
+| `1.33` | `1.33.11` | `2.3.0` | `3.32.0` | `4.0.18` | `v26.3.1` | `v4.1.4` |
 
 The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single source of truth.
 
@@ -51,6 +54,7 @@ The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single sourc
 - `sshpass` installed if you use password-based SSH auth
 - One reachable Ubuntu 24.04 target node
 - Internet access from the target node to Kubernetes and GitHub artifact endpoints
+- Internet access to Helm and the Kubernetes SIGs Helm repository when NFS provisioner is enabled
 - Internet access to Helm and NVIDIA artifact endpoints when GPU Operator is enabled
 - NVIDIA GPU present on the target node for full GPU Operator validation
 - When GPU Operator is enabled, CNS install removes active host CUDA/NVIDIA driver packages and disables Nouveau before Kubernetes deployment
@@ -66,10 +70,18 @@ chmod +x ./cns.sh
 ./cns.sh install 1.36
 ```
 
+By default, CNS also enables the node as an NFS server, exports `/srv/cns/nfs`, deploys `nfs-subdir-external-provisioner`, and creates the default `nfs-client` StorageClass.
+
 To skip GPU Operator installation and leave host GPU drivers unmanaged by CNS:
 
 ```bash
 ./cns.sh install 1.36 --no-gpu-operator
+```
+
+To skip NFS server and dynamic storage provisioner setup:
+
+```bash
+./cns.sh install 1.36 --no-nfs-provisioner
 ```
 
 To remove the deployment:
@@ -77,6 +89,8 @@ To remove the deployment:
 ```bash
 ./cns.sh uninstall
 ```
+
+Uninstall removes the NFS provisioner release and CNS export configuration, but preserves PVC data under `/srv/cns/nfs`.
 
 ## Documentation
 
@@ -91,5 +105,6 @@ The versions currently pinned in this repository are defined by the CNS 26.5.0 s
 - Kubernetes support/release pages: `1.36.0`, `1.35.4`, `1.34.7`, `1.33.11`
 - containerd GitHub releases: `2.3.0`
 - Project Calico GitHub releases: `3.32.0`
+- Kubernetes SIGs nfs-subdir-external-provisioner chart: `4.0.18`
 - NVIDIA GPU Operator docs/releases: `v26.3.1`
 - Helm GitHub releases: `v4.1.4`

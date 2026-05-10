@@ -1,0 +1,46 @@
+---
+# Configures the host NFS server export used by the CNS storage provisioner.
+- name: Ensure NFS packages are installed
+  ansible.builtin.apt:
+    name: "{{ nfs_provisioner_packages }}"
+    state: present
+    update_cache: true
+
+- name: Ensure NFS export directory exists
+  ansible.builtin.file:
+    path: "{{ nfs_provisioner_export_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0777"
+
+- name: Ensure NFS exports directory exists
+  ansible.builtin.file:
+    path: /etc/exports.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure CNS NFS export
+  ansible.builtin.copy:
+    dest: "{{ nfs_provisioner_export_file }}"
+    mode: "0644"
+    content: |
+      # CNS NFS export for nfs-subdir-external-provisioner.
+      {{ nfs_provisioner_export_path }} {{ nfs_provisioner_export_options }}
+  register: nfs_provisioner_export_config
+
+- name: Enable and start NFS server
+  ansible.builtin.systemd:
+    name: "{{ nfs_provisioner_service_name }}"
+    state: started
+    enabled: true
+
+- name: Reload NFS exports
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/exportfs
+      - -ra
+  changed_when: false
+  when: nfs_provisioner_export_config.changed

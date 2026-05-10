@@ -1,0 +1,7 @@
+---
+# Runs the NFS server and provisioner install task sequence.
+- name: Configure NFS server
+  ansible.builtin.include_tasks: server.yml
+
+- name: Deploy NFS subdir external provisioner
+  ansible.builtin.include_tasks: provisioner.yml

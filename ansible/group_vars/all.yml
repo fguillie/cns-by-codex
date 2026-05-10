@@ -4,6 +4,7 @@ default_calico_version: "3.32.0"
 cns_action: install
 cns_cluster_name: cns
 cns_gpu_operator_enabled: true
+cns_nfs_provisioner_enabled: true
 cns_pod_cidr: 192.168.0.0/16
 cns_service_cidr: 10.96.0.0/12
 cns_admin_user: "{{ ansible_user | default('ubuntu') }}"
@@ -43,3 +44,19 @@ gpu_operator_release_name: gpu-operator
 gpu_operator_repo_name: nvidia
 gpu_operator_repo_url: https://helm.ngc.nvidia.com/nvidia
 gpu_operator_chart: nvidia/gpu-operator
+
+nfs_provisioner_namespace: nfs-provisioner
+nfs_provisioner_release_name: nfs-subdir-external-provisioner
+nfs_provisioner_repo_name: nfs-subdir-external-provisioner
+nfs_provisioner_repo_url: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+nfs_provisioner_chart: nfs-subdir-external-provisioner/nfs-subdir-external-provisioner
+nfs_provisioner_export_path: /srv/cns/nfs
+nfs_provisioner_export_file: /etc/exports.d/cns-nfs-provisioner.exports
+nfs_provisioner_export_options: "*(rw,sync,no_subtree_check,no_root_squash)"
+nfs_provisioner_service_name: nfs-kernel-server
+nfs_provisioner_server: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+nfs_provisioner_storage_class: nfs-client
+nfs_provisioner_default_class: true
+nfs_provisioner_packages:
+  - nfs-kernel-server
+  - nfs-common

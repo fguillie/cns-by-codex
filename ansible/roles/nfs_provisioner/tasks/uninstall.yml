@@ -1,0 +1,98 @@
+---
+# Removes NFS provisioner Kubernetes resources while preserving exported data.
+- name: Check for Kubernetes admin kubeconfig
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: nfs_provisioner_kubeconfig
+
+- name: Check for Helm binary
+  ansible.builtin.stat:
+    path: "{{ helm_binary_path }}"
+  register: nfs_provisioner_helm_binary
+
+- name: Inspect current NFS provisioner release
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - list
+      - --namespace
+      - "{{ nfs_provisioner_namespace }}"
+      - -o
+      - json
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nfs_provisioner_release_list
+  failed_when: false
+  changed_when: false
+  when:
+    - nfs_provisioner_kubeconfig.stat.exists
+    - nfs_provisioner_helm_binary.stat.exists
+
+- name: Uninstall NFS provisioner release
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - uninstall
+      - "{{ nfs_provisioner_release_name }}"
+      - --namespace
+      - "{{ nfs_provisioner_namespace }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nfs_provisioner_uninstall
+  failed_when: false
+  changed_when: nfs_provisioner_uninstall.rc == 0 and 'uninstalled' in nfs_provisioner_uninstall.stdout
+  when:
+    - nfs_provisioner_kubeconfig.stat.exists
+    - nfs_provisioner_helm_binary.stat.exists
+    - nfs_provisioner_release_list.stdout is search('"name":"' ~ nfs_provisioner_release_name ~ '"')
+
+- name: Remove NFS provisioner StorageClass
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - delete
+      - storageclass
+      - "{{ nfs_provisioner_storage_class }}"
+      - --ignore-not-found=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nfs_provisioner_sc_delete
+  failed_when: false
+  changed_when: "'deleted' in nfs_provisioner_sc_delete.stdout"
+  when: nfs_provisioner_kubeconfig.stat.exists
+
+- name: Remove NFS provisioner namespace
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - delete
+      - namespace
+      - "{{ nfs_provisioner_namespace }}"
+      - --ignore-not-found=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nfs_provisioner_ns_delete
+  failed_when: false
+  changed_when: "'deleted' in nfs_provisioner_ns_delete.stdout"
+  when: nfs_provisioner_kubeconfig.stat.exists
+
+- name: Remove CNS NFS export
+  ansible.builtin.file:
+    path: "{{ nfs_provisioner_export_file }}"
+    state: absent
+  register: nfs_provisioner_export_remove
+
+- name: Check for exportfs
+  ansible.builtin.stat:
+    path: /usr/sbin/exportfs
+  register: nfs_provisioner_exportfs
+
+- name: Reload NFS exports
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/exportfs
+      - -ra
+  changed_when: false
+  when:
+    - nfs_provisioner_export_remove.changed
+    - nfs_provisioner_exportfs.stat.exists

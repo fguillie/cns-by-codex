@@ -12,7 +12,7 @@ STACKS_DIR="${SCRIPT_DIR}/stacks"
 print_help() {
   cat <<'EOF'
 Usage:
-  ./cns.sh install <stack-version> [--gpu-operator|--no-gpu-operator]
+  ./cns.sh install <stack-version> [--gpu-operator|--no-gpu-operator] [--nfs-provisioner|--no-nfs-provisioner]
   ./cns.sh uninstall
   ./cns.sh help
 
@@ -24,6 +24,8 @@ Commands:
 Install options:
   --gpu-operator           Install the NVIDIA GPU Operator (default).
   --no-gpu-operator        Skip GPU Operator and host driver cleanup.
+  --nfs-provisioner        Install the NFS dynamic storage provisioner (default).
+  --no-nfs-provisioner     Skip NFS server and provisioner setup.
 
 Available stack versions:
   1.36
@@ -48,6 +50,7 @@ require_file() {
 run_install() {
   local stack_version="${1:-}"
   local gpu_operator_enabled="true"
+  local nfs_provisioner_enabled="true"
   local stack_file
 
   if [[ -z "${stack_version}" || "${stack_version}" == --* ]]; then
@@ -64,6 +67,12 @@ run_install() {
         ;;
       --no-gpu-operator)
         gpu_operator_enabled="false"
+        ;;
+      --nfs-provisioner)
+        nfs_provisioner_enabled="true"
+        ;;
+      --no-nfs-provisioner)
+        nfs_provisioner_enabled="false"
         ;;
       *)
         printf 'Unknown install option: %s\n\n' "$1" >&2
@@ -86,6 +95,7 @@ run_install() {
     -e "cns_action=install" \
     -e "cns_stack_version=${stack_version}" \
     -e "cns_gpu_operator_enabled=${gpu_operator_enabled}" \
+    -e "cns_nfs_provisioner_enabled=${nfs_provisioner_enabled}" \
     -e "@${stack_file}"
 }
 

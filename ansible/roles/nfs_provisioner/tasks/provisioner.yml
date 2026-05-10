@@ -1,0 +1,113 @@
+---
+# Deploys and verifies the NFS subdir external provisioner Helm release.
+- name: Ensure NFS provisioner namespace exists
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - create
+      - namespace
+      - "{{ nfs_provisioner_namespace }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nfs_provisioner_namespace_create
+  failed_when: nfs_provisioner_namespace_create.rc != 0 and 'AlreadyExists' not in nfs_provisioner_namespace_create.stderr
+  changed_when: nfs_provisioner_namespace_create.rc == 0
+
+- name: Check configured Helm repositories
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - repo
+      - list
+  register: nfs_provisioner_helm_repo_list
+  changed_when: false
+
+- name: Inspect current NFS provisioner release
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - list
+      - --namespace
+      - "{{ nfs_provisioner_namespace }}"
+      - -o
+      - json
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nfs_provisioner_release_list
+  changed_when: false
+
+- name: Add NFS provisioner Helm repository
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - repo
+      - add
+      - "{{ nfs_provisioner_repo_name }}"
+      - "{{ nfs_provisioner_repo_url }}"
+  register: nfs_provisioner_helm_repo_add
+  failed_when: nfs_provisioner_helm_repo_add.rc != 0
+  changed_when: nfs_provisioner_helm_repo_add.rc == 0
+  when: nfs_provisioner_repo_url not in nfs_provisioner_helm_repo_list.stdout
+
+- name: Update Helm repositories
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - repo
+      - update
+  changed_when: false
+
+- name: Install or upgrade NFS provisioner
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - upgrade
+      - --install
+      - "{{ nfs_provisioner_release_name }}"
+      - "{{ nfs_provisioner_chart }}"
+      - --namespace
+      - "{{ nfs_provisioner_namespace }}"
+      - --version={{ nfs_subdir_external_provisioner_version }}
+      - --set
+      - nfs.server={{ nfs_provisioner_server }}
+      - --set
+      - nfs.path={{ nfs_provisioner_export_path }}
+      - --set
+      - storageClass.name={{ nfs_provisioner_storage_class }}
+      - --set
+      - storageClass.defaultClass={{ nfs_provisioner_default_class | bool | ternary('true', 'false') }}
+      - --wait
+      - --timeout=10m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nfs_provisioner_install
+  changed_when: true
+  when: >
+    nfs_provisioner_release_list.stdout == '[]' or
+    ('"status":"deployed"' not in nfs_provisioner_release_list.stdout) or
+    ('"chart":"nfs-subdir-external-provisioner-' ~ nfs_subdir_external_provisioner_version ~ '"' not in nfs_provisioner_release_list.stdout)
+
+- name: Wait for NFS provisioner deployment rollout
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - -n
+      - "{{ nfs_provisioner_namespace }}"
+      - rollout
+      - status
+      - deployment/{{ nfs_provisioner_release_name }}
+      - --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: Verify NFS provisioner StorageClass
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - get
+      - storageclass
+      - "{{ nfs_provisioner_storage_class }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
