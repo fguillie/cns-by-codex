@@ -94,6 +94,30 @@ To remove the deployment:
 
 Uninstall removes the NFS provisioner release and CNS export configuration, but preserves PVC data under `/srv/cns/nfs`.
 
+## Live Matrix Validation
+
+The live validation script under [`tests/test_cns_matrix.py`](tests/test_cns_matrix.py) automates install, idempotency, validation, uninstall, and cleanup checks across every CNS stack and every GPU Operator/NFS provisioner option combination.
+
+Set the target password with an environment variable so it is not committed or stored in shell scripts:
+
+```bash
+CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
+```
+
+By default, the script discovers all releases from `stacks/*.yml` and runs the full matrix. To run a smaller smoke test:
+
+```bash
+CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
+  --host 10.86.6.94 \
+  --user nvidia \
+  --stack 1.36 \
+  --gpu disabled \
+  --nfs disabled \
+  --fail-fast
+```
+
+The script prints a table with each case result and writes detailed command logs to a temporary directory unless `--log-dir` is provided. The control machine must have `python3`, `ansible-playbook`, `ssh`, and `sshpass` available.
+
 ## Documentation
 
 - [Usage](docs/usage.md)
