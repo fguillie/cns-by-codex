@@ -39,7 +39,7 @@ CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `co
 
 CNS keeps one stack file per supported Kubernetes minor release branch.
 
-| Component | `1.36` | `1.35` | `1.34` | `1.33` |
+| Component | CNS stack `1.36` | CNS stack `1.35` | CNS stack `1.34` | CNS stack `1.33` |
 | --- | --- | --- | --- | --- |
 | Kubernetes | `1.36.0` | `1.35.4` | `1.34.7` | `1.33.11` |
 | Containerd | `2.3.0` | `2.3.0` | `2.3.0` | `2.3.0` |
