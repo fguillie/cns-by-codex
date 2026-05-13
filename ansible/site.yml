@@ -21,18 +21,10 @@
           - kubernetes_package_version is defined
           - containerd_version is defined
           - calico_version is defined
-        fail_msg: "Install requires a stack file from stacks/<version>.yml."
-      when: cns_action == 'install'
-
-    - name: Validate GPU Operator stack variables for installs
-      ansible.builtin.assert:
-        that:
           - gpu_operator_version is defined
           - helm_version is defined
-        fail_msg: "GPU Operator install requires gpu_operator_version and helm_version in the selected stack file."
-      when:
-        - cns_action == 'install'
-        - cns_gpu_operator_enabled | bool
+        fail_msg: "Install requires a stack file from stacks/<version>.yml."
+      when: cns_action == 'install'
 
   tasks:
     - name: Uninstall GPU Operator first
@@ -48,9 +40,7 @@
     - name: Run install pre-checks
       ansible.builtin.import_role:
         name: precheck
-      when:
-        - cns_action == 'install'
-        - cns_gpu_operator_enabled | bool
+      when: cns_action == 'install'
 
     - name: Install Kubernetes stack
       ansible.builtin.import_role:
@@ -60,6 +50,4 @@
     - name: Install GPU Operator
       ansible.builtin.import_role:
         name: gpu_operator
-      when:
-        - cns_action == 'install'
-        - cns_gpu_operator_enabled | bool
+      when: cns_action == 'install'

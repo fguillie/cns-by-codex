@@ -6,7 +6,7 @@
 
 CNS targets one Ubuntu 24.04 node and turns it into a combined control-plane and workload node.
 
-The default deployment sequence is:
+The deployment sequence is:
 
 1. Run pre-checks to remove host CUDA/NVIDIA drivers and disable Nouveau.
 2. Prepare the host for Kubernetes.
@@ -16,8 +16,6 @@ The default deployment sequence is:
 6. Install Calico.
 7. Install Helm.
 8. Deploy the NVIDIA GPU Operator.
-
-When `--no-gpu-operator` is passed to `cns.sh install`, CNS skips the driver cleanup pre-checks, Helm installation, and GPU Operator deployment.
 
 ## Main Components
 
@@ -30,9 +28,9 @@ When `--no-gpu-operator` is passed to `cns.sh install`, CNS skips the driver cle
 - `ansible/roles/kubernetes`
   - Handles host prep, containerd, Kubernetes, and Calico.
 - `ansible/roles/precheck`
-  - Removes active host CUDA/NVIDIA driver packages and disables Nouveau before install when GPU Operator is enabled.
+  - Removes active host CUDA/NVIDIA driver packages and disables Nouveau before install.
 - `ansible/roles/gpu_operator`
-  - Handles Helm and GPU Operator deployment when enabled.
+  - Handles Helm and GPU Operator deployment.
 
 ## Assumptions
 

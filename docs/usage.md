@@ -26,13 +26,7 @@ ansible_python_interpreter=/usr/bin/python3
 ./cns.sh install 1.35
 ```
 
-This runs `ansible/site.yml` with the selected stack definition and installs the GPU Operator by default.
-
-To install only Kubernetes, containerd, and Calico without GPU Operator or host driver cleanup:
-
-```bash
-./cns.sh install 1.35 --no-gpu-operator
-```
+This runs `ansible/site.yml` with the selected stack definition.
 
 ## Uninstall
 
@@ -51,13 +45,10 @@ ansible-playbook -i ansible/inventory/hosts.ini ansible/site.yml \
   -e @stacks/1.35.yml
 ```
 
-Set `-e cns_gpu_operator_enabled=false` to skip GPU Operator deployment when running Ansible directly.
-
 ## Expected Outcome
 
 After a successful install:
 
 - `kubectl get nodes` shows one `Ready` node
 - Calico pods are healthy
-- With GPU Operator enabled, GPU Operator resources exist in the `gpu-operator` namespace
-- With `--no-gpu-operator`, host GPU driver management remains outside CNS
+- GPU Operator resources exist in the `gpu-operator` namespace
