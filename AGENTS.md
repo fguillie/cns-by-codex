@@ -21,6 +21,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - One file exists per supported Kubernetes minor branch.
 - Do not hardcode component versions in the roles or shell wrapper when they belong in a stack file.
 - The currently pinned GPU Operator line is `v26.3.1`.
+- The currently pinned CUDA driver container line is `580.126.20`.
 - The currently pinned `nfs-subdir-external-provisioner` chart line is `4.0.18`.
 
 ## Repo Structure
@@ -45,6 +46,9 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Do not add hidden version logic outside the stack manifests.
 - Keep GPU Operator enabled by default unless the user explicitly requests otherwise.
 - Expose GPU Operator opt-out only as an install-time deployment choice, not as a separate stack manifest.
+- Keep the CUDA driver container version in stack files, not in role logic or shell wrapper defaults.
+- Expose CUDA driver container version override only as an install-time deployment choice, not as a separate stack manifest.
+- Do not add runtime registry lookups for CUDA driver container validation; invalid driver versions should fail through GPU Operator deployment.
 - Keep NFS provisioner enabled by default unless the user explicitly requests otherwise.
 - Expose NFS provisioner opt-out only as an install-time deployment choice, not as a separate stack manifest.
 - Keep the NFS provisioner chart version in stack files, not in role logic.
@@ -73,16 +77,19 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - `./cns.sh install <stack-version>` sets `cns_action=install`, loads the selected stack file, and installs GPU Operator and NFS provisioner by default.
 - `./cns.sh install <stack-version> --gpu-operator` is the explicit default-enabled form.
 - `./cns.sh install <stack-version> --no-gpu-operator` sets `cns_gpu_operator_enabled=false`, skips GPU Operator validation, skips the `precheck` role, and skips the `gpu_operator` role.
+- `./cns.sh install <stack-version> --cuda-driver-version <version>` sets `cns_cuda_driver_container_version=<version>` and overrides the selected stack file's `cuda_driver_container_version` for that install.
+- `./cns.sh install <stack-version> --cuda-driver-version <version>` requires GPU Operator installation and must fail before Ansible when combined with `--no-gpu-operator`.
 - `./cns.sh install <stack-version> --nfs-provisioner` is the explicit default-enabled NFS provisioner form.
 - `./cns.sh install <stack-version> --no-nfs-provisioner` sets `cns_nfs_provisioner_enabled=false`, skips NFS server setup, and skips the `nfs_provisioner` role.
 - The playbook validates the action and stack variables first.
-- The playbook validates `gpu_operator_version` and `helm_version` only when GPU Operator is enabled.
+- The playbook validates `gpu_operator_version`, `cuda_driver_container_version`, and `helm_version` only when GPU Operator is enabled.
 - The playbook validates `nfs_subdir_external_provisioner_version` and `helm_version` only when NFS provisioner is enabled.
 - The `precheck` role runs only when `cns_action == 'install' and cns_gpu_operator_enabled | bool`.
 - The `precheck` role runs before the `kubernetes`, `nfs_provisioner`, and `gpu_operator` roles.
 - The `precheck` role is not launched by `./cns.sh uninstall`.
 - Inside the `precheck` role, cleanup is skipped when `/etc/kubernetes/admin.conf` already exists so steady-state install reruns do not remove GPU Operator-managed drivers.
 - When GPU Operator is disabled, CNS must not remove existing host CUDA/NVIDIA driver packages or Nouveau state.
+- When GPU Operator is enabled, the `gpu_operator` role passes the effective CUDA driver container version to Helm as `driver.version`.
 - The `kubernetes` role resolves `cns_admin_home` from `getent passwd <cns_admin_user>` before install or uninstall tasks.
 - The `helm_client` role runs after Kubernetes install and before any enabled Helm-backed component.
 - The `nfs_provisioner` role installs `nfs-kernel-server`, exports `/srv/cns/nfs`, deploys the `nfs-subdir-external-provisioner` Helm release, and creates the default `nfs-client` StorageClass.
@@ -115,6 +122,7 @@ ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml 
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e cns_gpu_operator_enabled=false -e @stacks/1.36.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e cns_nfs_provisioner_enabled=false -e @stacks/1.36.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e cns_gpu_operator_enabled=false -e cns_nfs_provisioner_enabled=false -e @stacks/1.36.yml
+ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e cns_cuda_driver_container_version=580.126.20 -e @stacks/1.36.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=uninstall
 ```
 
@@ -162,6 +170,7 @@ For live install validation with GPU Operator enabled, confirm:
 - the node reaches `Ready`
 - Calico pods are running
 - the GPU Operator Helm release is deployed at the pinned chart version
+- the GPU Operator Helm release values include the expected `driver.version`
 - `ClusterPolicy` reaches `ready`
 - the node reports `nvidia.com/gpu`
 - the selected admin user can run `kubectl` without setting `KUBECONFIG`
@@ -192,6 +201,8 @@ The NFS provisioner matrix was validated against `10.86.6.94` on May 9-10, 2026 
 - For the validated `1.35` path, a steady-state install rerun should complete with `changed=0`.
 - For the validated GPU Operator toggle paths, steady-state reruns for each stack and option should complete with `changed=0`.
 - GPU Operator reruns must not overwrite the GPU Operator managed containerd runtime configuration.
+- GPU Operator reruns must not reinstall or upgrade the Helm release when the deployed chart version and `driver.version` already match the selected stack or install-time override.
+- Changing `--cuda-driver-version` on a GPU-enabled install rerun should trigger a Helm upgrade so the requested `driver.version` is applied.
 - For the validated NFS provisioner toggle paths, steady-state reruns for each stack and option should complete with `changed=0`.
 - NFS provisioner reruns must not reinstall or upgrade the Helm release when the deployed chart version already matches the selected stack.
 - Uninstall reruns should complete with `changed=0` after CNS has already been removed.
