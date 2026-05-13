@@ -134,7 +134,9 @@ Set the target password with an environment variable so it is not committed or s
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
 ```
 
-By default, the script discovers all releases from `stacks/*.yml` and runs the full matrix. To run a smaller smoke test:
+By default, the script discovers all releases from `stacks/*.yml`, runs `./cns.sh uninstall` before the matrix starts, and tests both GPU Operator and NFS provisioner states. Each case runs install, immediate install rerun for idempotency, live validation, uninstall, cleanup validation, and an uninstall rerun.
+
+Use `--stack` to limit releases, `--gpu enabled|disabled|both` to choose GPU Operator cases, and `--nfs enabled|disabled|both` to choose NFS provisioner cases. To run a smaller smoke test:
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
@@ -146,7 +148,26 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --fail-fast
 ```
 
-The script prints a table with each case result and writes detailed command logs to a temporary directory unless `--log-dir` is provided. The control machine must have `python3`, `ansible-playbook`, `ssh`, and `sshpass` available.
+Use `--cuda-driver-version <version>` to validate a specific GPU Operator CUDA driver container version. The option may be repeated and is valid only when GPU Operator cases are enabled. Supported matrix override values are `580.159.03`, `580.126.20`, and `595.71.05`.
+
+```bash
+CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
+  --host 10.86.9.190 \
+  --user nvidia \
+  --stack 1.36 \
+  --gpu enabled \
+  --nfs disabled \
+  --cuda-driver-version 580.159.03 \
+  --cuda-driver-version 580.126.20 \
+  --cuda-driver-version 595.71.05 \
+  --fail-fast
+```
+
+GPU-enabled validation checks the GPU Operator Helm chart version, the effective `driver.version`, `driver.kernelModuleType=proprietary`, the CNS driver kernel module ConfigMap name, `ClusterPolicy` readiness, node `nvidia.com/gpu` allocatable resources, Calico, node readiness, and non-root admin kubeconfig access. NFS-enabled validation checks the pinned NFS provisioner chart, default `nfs-client` StorageClass, and a bound test PVC.
+
+The script prints a table with each case result and writes detailed command logs to a temporary directory unless `--log-dir` is provided. Use `--no-pre-clean` to skip the initial uninstall, `--command-timeout` to adjust the per-command timeout, and `--wait-interval` to adjust validation polling. The control machine must have `python3`, `ansible-playbook`, `ssh`, and `sshpass` available.
+
+The CUDA driver override matrix was last validated on May 13, 2026 against `10.86.9.190` for stack `1.36` with GPU Operator enabled, NFS provisioner disabled, and driver container versions `580.159.03`, `580.126.20`, and `595.71.05`; all install, rerun, validation, uninstall, and cleanup checks passed.
 
 ## Documentation
 
