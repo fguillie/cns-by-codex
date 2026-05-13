@@ -49,6 +49,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Keep the CUDA driver container version in stack files, not in role logic or shell wrapper defaults.
 - Expose CUDA driver container version override only as an install-time deployment choice, not as a separate stack manifest.
 - Do not add runtime registry lookups for CUDA driver container validation; invalid driver versions should fail through GPU Operator deployment.
+- Keep `tests/test_cns_matrix.py --cuda-driver-version` choices aligned with the explicitly validated CUDA driver container versions.
 - Keep NFS provisioner enabled by default unless the user explicitly requests otherwise.
 - Expose NFS provisioner opt-out only as an install-time deployment choice, not as a separate stack manifest.
 - Keep the NFS provisioner chart version in stack files, not in role logic.
@@ -129,13 +130,28 @@ ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml 
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=uninstall
 ```
 
-The live matrix script can automate the remote QA install, rerun, validation, uninstall, and cleanup checks. It discovers supported releases from `stacks/*.yml`, creates a temporary inventory instead of editing `ansible/inventory/hosts.ini`, and expects the target password from `CNS_TEST_PASSWORD` or `--password`.
+The live matrix script can automate the remote QA install, rerun, validation, uninstall, and cleanup checks. It discovers supported releases from `stacks/*.yml`, creates a temporary inventory instead of editing `ansible/inventory/hosts.ini`, runs `./cns.sh uninstall` before the matrix by default, and expects the target password from `CNS_TEST_PASSWORD` or `--password`.
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
 ```
 
-If remote QA is requested and credentials are available, use the target inventory and validate:
+Use `--stack` to limit releases, `--gpu enabled|disabled|both` to choose GPU Operator cases, `--nfs enabled|disabled|both` to choose NFS provisioner cases, and `--fail-fast` when iterating on a failure. Use `--cuda-driver-version <version>` to validate specific GPU Operator CUDA driver container versions; the option may be repeated and is valid only for GPU-enabled cases. The currently supported test override values are `580.159.03`, `580.126.20`, and `595.71.05`.
+
+```bash
+CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
+  --host 10.86.9.190 \
+  --user nvidia \
+  --stack 1.36 \
+  --gpu enabled \
+  --nfs disabled \
+  --cuda-driver-version 580.159.03 \
+  --cuda-driver-version 580.126.20 \
+  --cuda-driver-version 595.71.05 \
+  --fail-fast
+```
+
+If full remote QA is requested and credentials are available, use the target inventory and validate:
 
 1. `install --no-gpu-operator --no-nfs-provisioner`
 2. immediate rerun for idempotency
@@ -188,6 +204,7 @@ The 26.5.0 matrix was validated against `10.86.6.94` on May 9, 2026:
 - `--no-gpu-operator` install, immediate rerun with `changed=0`, validation, and uninstall
 - `--gpu-operator` install, immediate rerun with `changed=0`, validation, uninstall, and immediate uninstall rerun with `changed=0`
 - final host state after validation: uninstalled, `containerd` inactive, `kubelet` inactive, and no `/etc/kubernetes/admin.conf`
+
 The NFS provisioner matrix was validated against `10.86.6.94` on May 9-10, 2026 UTC:
 
 - `1.33`, `1.34`, `1.35`, and `1.36`
@@ -196,6 +213,15 @@ The NFS provisioner matrix was validated against `10.86.6.94` on May 9-10, 2026 
 - NFS-enabled paths confirmed chart `nfs-subdir-external-provisioner-4.0.18`, default `nfs-client` StorageClass, and a bound test PVC
 - GPU-enabled paths confirmed chart `gpu-operator-v26.3.1`, `ClusterPolicy` ready, and `nvidia.com/gpu` allocatable
 - final host state after validation: uninstalled, `containerd` inactive, `kubelet` inactive, no `/etc/kubernetes/admin.conf`, CNS NFS export removed, and `/srv/cns/nfs` preserved
+
+The CUDA driver override matrix was validated against `10.86.9.190` on May 13, 2026:
+
+- stack `1.36`
+- `--gpu enabled --nfs disabled`
+- `--cuda-driver-version 580.159.03`, `580.126.20`, and `595.71.05`
+- install, immediate install rerun, validation, uninstall, uninstall rerun, and cleanup checks passed for all three driver versions
+- GPU-enabled paths confirmed chart `gpu-operator-v26.3.1`, requested `driver.version`, `driver.kernelModuleType=proprietary`, CNS `driver.kernelModuleConfig.name`, `ClusterPolicy` ready, and `nvidia.com/gpu` allocatable
+- final host state after validation: uninstalled with `/run/nvidia`, `/usr/local/nvidia`, `/var/run/cdi`, and `/etc/containerd/conf.d/99-nvidia.toml` absent
 
 ## Idempotency Expectations
 
