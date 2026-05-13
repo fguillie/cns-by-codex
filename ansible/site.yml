@@ -29,7 +29,9 @@
         that:
           - gpu_operator_version is defined
           - helm_version is defined
-        fail_msg: "GPU Operator install requires gpu_operator_version and helm_version in the selected stack file."
+          - cuda_driver_container_version is defined or cns_cuda_driver_container_version is defined
+          - (cns_cuda_driver_container_version | default(cuda_driver_container_version | default('', true), true) | string | length) > 0
+        fail_msg: "GPU Operator install requires gpu_operator_version, helm_version, and cuda_driver_container_version in the selected stack file or CLI override."
       when:
         - cns_action == 'install'
         - cns_gpu_operator_enabled | bool

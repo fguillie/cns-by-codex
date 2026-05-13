@@ -12,7 +12,7 @@ STACKS_DIR="${SCRIPT_DIR}/stacks"
 print_help() {
   cat <<'EOF'
 Usage:
-  ./cns.sh install <stack-version> [--gpu-operator|--no-gpu-operator] [--nfs-provisioner|--no-nfs-provisioner]
+  ./cns.sh install <stack-version> [--gpu-operator|--no-gpu-operator] [--cuda-driver-version <version>] [--nfs-provisioner|--no-nfs-provisioner]
   ./cns.sh uninstall
   ./cns.sh help
 
@@ -24,6 +24,7 @@ Commands:
 Install options:
   --gpu-operator           Install the NVIDIA GPU Operator (default).
   --no-gpu-operator        Skip GPU Operator and host driver cleanup.
+  --cuda-driver-version    Deploy the requested GPU Operator CUDA driver container version.
   --nfs-provisioner        Install the NFS dynamic storage provisioner (default).
   --no-nfs-provisioner     Skip NFS server and provisioner setup.
 
@@ -51,7 +52,9 @@ run_install() {
   local stack_version="${1:-}"
   local gpu_operator_enabled="true"
   local nfs_provisioner_enabled="true"
+  local cuda_driver_version=""
   local stack_file
+  local -a ansible_args
 
   if [[ -z "${stack_version}" || "${stack_version}" == --* ]]; then
     printf 'Missing stack version.\n\n' >&2
@@ -68,6 +71,15 @@ run_install() {
       --no-gpu-operator)
         gpu_operator_enabled="false"
         ;;
+      --cuda-driver-version)
+        if [[ "$#" -lt 2 || -z "${2:-}" || "${2}" == --* ]]; then
+          printf 'Missing CUDA driver container version for --cuda-driver-version.\n\n' >&2
+          print_help
+          exit 1
+        fi
+        cuda_driver_version="$2"
+        shift
+        ;;
       --nfs-provisioner)
         nfs_provisioner_enabled="true"
         ;;
@@ -83,20 +95,34 @@ run_install() {
     shift
   done
 
+  if [[ "${gpu_operator_enabled}" != "true" && -n "${cuda_driver_version}" ]]; then
+    printf '%s\n\n' '--cuda-driver-version requires GPU Operator installation. Remove --no-gpu-operator or omit the driver version override.' >&2
+    print_help
+    exit 1
+  fi
+
   stack_file="${STACKS_DIR}/${stack_version}.yml"
 
   require_file "${stack_file}"
   require_file "${INVENTORY_FILE}"
   require_file "${PLAYBOOK_FILE}"
 
-  ansible-playbook \
-    -i "${INVENTORY_FILE}" \
-    "${PLAYBOOK_FILE}" \
-    -e "cns_action=install" \
-    -e "cns_stack_version=${stack_version}" \
-    -e "cns_gpu_operator_enabled=${gpu_operator_enabled}" \
-    -e "cns_nfs_provisioner_enabled=${nfs_provisioner_enabled}" \
+  ansible_args=(
+    ansible-playbook
+    -i "${INVENTORY_FILE}"
+    "${PLAYBOOK_FILE}"
+    -e "cns_action=install"
+    -e "cns_stack_version=${stack_version}"
+    -e "cns_gpu_operator_enabled=${gpu_operator_enabled}"
+    -e "cns_nfs_provisioner_enabled=${nfs_provisioner_enabled}"
     -e "@${stack_file}"
+  )
+
+  if [[ -n "${cuda_driver_version}" ]]; then
+    ansible_args+=(-e "cns_cuda_driver_container_version=${cuda_driver_version}")
+  fi
+
+  "${ansible_args[@]}"
 }
 
 run_uninstall() {

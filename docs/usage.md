@@ -35,6 +35,12 @@ To install only Kubernetes, containerd, and Calico without GPU Operator or host 
 ./cns.sh install 1.36 --no-gpu-operator
 ```
 
+To deploy a specific GPU Operator CUDA driver container version:
+
+```bash
+./cns.sh install 1.36 --cuda-driver-version 580.126.20
+```
+
 To skip NFS server and dynamic storage provisioner setup:
 
 ```bash
@@ -59,6 +65,7 @@ ansible-playbook -i ansible/inventory/hosts.ini ansible/site.yml \
 ```
 
 Set `-e cns_gpu_operator_enabled=false` to skip GPU Operator deployment when running Ansible directly.
+Set `-e cns_cuda_driver_container_version=580.126.20` to override the stack default GPU Operator CUDA driver container version.
 Set `-e cns_nfs_provisioner_enabled=false` to skip NFS server and provisioner setup.
 
 ## Expected Outcome

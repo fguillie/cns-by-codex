@@ -1,5 +1,9 @@
 ---
 # Deploys and verifies the NVIDIA GPU Operator release.
+- name: Set desired GPU Operator driver container version
+  ansible.builtin.set_fact:
+    gpu_operator_driver_version: "{{ cns_cuda_driver_container_version | default(cuda_driver_container_version | default('', true), true) }}"
+
 - name: Label GPU Operator namespace for privileged PSA
   ansible.builtin.command:
     argv:
@@ -63,6 +67,34 @@
   register: gpu_operator_release_list
   changed_when: false
 
+- name: Set current GPU Operator release state
+  ansible.builtin.set_fact:
+    gpu_operator_current_release: "{{ ((gpu_operator_release_list.stdout | from_json) | selectattr('name', 'equalto', gpu_operator_release_name) | list | first) | default({}, true) }}"
+
+- name: Inspect current GPU Operator values
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - get
+      - values
+      - "{{ gpu_operator_release_name }}"
+      - --namespace
+      - "{{ gpu_operator_namespace }}"
+      - --all
+      - -o
+      - json
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: gpu_operator_release_values
+  failed_when: false
+  changed_when: false
+  when: gpu_operator_current_release | length > 0
+
+- name: Set current GPU Operator driver container version
+  ansible.builtin.set_fact:
+    gpu_operator_current_driver_version: "{{ ((gpu_operator_release_values.stdout | default('{}', true) | from_json | default({}, true)).get('driver', {}).get('version', '')) }}"
+  when: gpu_operator_current_release | length > 0
+
 - name: Add NVIDIA Helm repository
   ansible.builtin.command:
     argv:
@@ -97,6 +129,8 @@
       - --version={{ gpu_operator_version }}
       - --set
       - operator.defaultRuntime=containerd
+      - --set-string
+      - driver.version={{ gpu_operator_driver_version }}
       - --wait
       - --timeout=20m
   environment:
@@ -104,9 +138,10 @@
   register: gpu_operator_install
   changed_when: "'STATUS: deployed' in gpu_operator_install.stdout or 'STATUS: pending-upgrade' in gpu_operator_install.stdout"
   when: >
-    gpu_operator_release_list.stdout == '[]' or
-    ('"status":"deployed"' not in gpu_operator_release_list.stdout) or
-    ('"chart":"gpu-operator-' ~ gpu_operator_version ~ '"' not in gpu_operator_release_list.stdout)
+    (gpu_operator_current_release | length) == 0 or
+    gpu_operator_current_release.get('status', '') != 'deployed' or
+    gpu_operator_current_release.get('chart', '') != ('gpu-operator-' ~ gpu_operator_version) or
+    (gpu_operator_current_driver_version | default('')) != gpu_operator_driver_version
 
 - name: Wait for GPU Operator pods to appear
   ansible.builtin.command:

@@ -35,6 +35,7 @@
 
 - Verify the node has an NVIDIA GPU.
 - Check whether the host driver is already installed or whether the driver container can build/install.
+- If `--cuda-driver-version` was used, confirm that driver container version exists in NVIDIA's registry.
 - Inspect `kubectl get pods -n gpu-operator` and `kubectl logs -n gpu-operator <pod>`.
 
 ## Uninstall Leaves Residual State

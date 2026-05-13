@@ -41,6 +41,7 @@ class Stack:
     version: str
     path: pathlib.Path
     gpu_operator_version: str
+    cuda_driver_container_version: str
     nfs_provisioner_version: str
 
 
@@ -368,6 +369,7 @@ def discover_stacks(repo_root: pathlib.Path) -> list[Stack]:
         data = parse_simple_yaml(path)
         version = data.get("cns_stack_version", path.stem)
         gpu_version = require_key(data, "gpu_operator_version", path)
+        cuda_driver_version = require_key(data, "cuda_driver_container_version", path)
         nfs_version = require_key(
             data,
             "nfs_subdir_external_provisioner_version",
@@ -378,6 +380,7 @@ def discover_stacks(repo_root: pathlib.Path) -> list[Stack]:
                 version=version,
                 path=path.resolve(),
                 gpu_operator_version=gpu_version,
+                cuda_driver_container_version=cuda_driver_version,
                 nfs_provisioner_version=nfs_version,
             )
         )
@@ -738,6 +741,20 @@ def validate_gpu_enabled(
     if chart != expected_chart:
         raise RuntimeError(f"GPU chart mismatch: got {chart!r}, want {expected_chart!r}")
 
+    values = helm_release_values(
+        runner,
+        GPU_RELEASE,
+        GPU_NAMESPACE,
+        log_dir / "validate-gpu-helm-values.log",
+    )
+    driver = values.get("driver", {})
+    driver_version = driver.get("version") if isinstance(driver, dict) else None
+    if driver_version != stack.cuda_driver_container_version:
+        raise RuntimeError(
+            "GPU driver container version mismatch: "
+            f"got {driver_version!r}, want {stack.cuda_driver_container_version!r}"
+        )
+
     runner.wait_for(
         "ClusterPolicy ready",
         f"kubectl --kubeconfig {KUBECONFIG} get clusterpolicy -o json",
@@ -846,6 +863,31 @@ def find_release_chart(releases: list[dict[str, object]], release_name: str) -> 
                 return chart
             raise RuntimeError(f"release {release_name} does not include chart")
     raise RuntimeError(f"release {release_name} was not found")
+
+
+def helm_release_values(
+    runner: Runner,
+    release_name: str,
+    namespace: str,
+    log_path: pathlib.Path,
+) -> dict[str, object]:
+    result = runner.ssh(
+        f"KUBECONFIG={KUBECONFIG} /usr/local/bin/helm get values "
+        f"{release_name} --namespace {namespace} --all -o json",
+        sudo=True,
+        log_path=log_path,
+    )
+    if result.rc != 0:
+        raise RuntimeError(
+            f"helm get values failed for release {release_name}; see {log_path}"
+        )
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"helm get values returned invalid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError("helm get values JSON was not an object")
+    return data
 
 
 def kubectl_json(

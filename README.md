@@ -72,6 +72,7 @@ The `cns.sh` wrapper runs the CNS Ansible playbook with the selected action and 
 | `./cns.sh install <stack-version>` | `<stack-version>` | Deploys the selected CNS stack. Supported values are `1.36`, `1.35`, `1.34`, and `1.33`. |
 | `./cns.sh install <stack-version> --gpu-operator` | `--gpu-operator` | Installs the NVIDIA GPU Operator. This is the default install behavior. |
 | `./cns.sh install <stack-version> --no-gpu-operator` | `--no-gpu-operator` | Skips GPU Operator deployment, GPU Operator validation, and host CUDA/NVIDIA driver cleanup. |
+| `./cns.sh install <stack-version> --cuda-driver-version <version>` | `--cuda-driver-version` | Deploys the requested GPU Operator CUDA driver container version instead of the stack default. |
 | `./cns.sh install <stack-version> --nfs-provisioner` | `--nfs-provisioner` | Installs the NFS server and `nfs-subdir-external-provisioner`. This is the default install behavior. |
 | `./cns.sh install <stack-version> --no-nfs-provisioner` | `--no-nfs-provisioner` | Skips NFS server setup, NFS export configuration, and NFS dynamic storage provisioner deployment. |
 | `./cns.sh uninstall` | None | Removes the deployed CNS stack from the target node. This command does not require a stack version. |
@@ -98,6 +99,12 @@ To skip GPU Operator installation and leave host GPU drivers unmanaged by CNS:
 
 ```bash
 ./cns.sh install 1.36 --no-gpu-operator
+```
+
+To override the stack default CUDA driver container version used by GPU Operator:
+
+```bash
+./cns.sh install 1.36 --cuda-driver-version 580.126.20
 ```
 
 To skip NFS server and dynamic storage provisioner setup:
