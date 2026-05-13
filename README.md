@@ -2,7 +2,7 @@
 
 # CNS
 
-CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `containerd`, Calico, Helm, default NFS dynamic storage, and optional NVIDIA GPU Operator support. The project is built around an Ansible playbook and a thin shell wrapper:
+CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `containerd`, Calico, Helm, default NFS dynamic storage, and optional NVIDIA GPU Operator support. GPU Operator installs use the stack-pinned CUDA driver container version by default, and `cns.sh` can override that driver container version for a specific install. The project is built around an Ansible playbook and a thin shell wrapper:
 
 ```bash
 ./cns.sh install <stack-version>
@@ -16,7 +16,7 @@ CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `co
 - Container runtime: `containerd`
 - CNI: Calico
 - Dynamic storage: NFS server and `nfs-subdir-external-provisioner` installed by default
-- GPU management: NVIDIA GPU Operator installed with Helm by default
+- GPU management: NVIDIA GPU Operator installed with Helm by default, using the stack-pinned CUDA driver container version unless overridden at install time
 
 ## Repository Layout
 
@@ -49,7 +49,7 @@ CNS keeps one stack file per supported Kubernetes minor release branch.
 | Helm | `v4.1.4` | `v4.1.4` | `v4.1.4` | `v4.1.4` |
 | NFS provisioner | `4.0.18` | `4.0.18` | `4.0.18` | `4.0.18` |
 
-The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single source of truth.
+The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single source of truth. The CUDA driver container row is the default `driver.version` passed to GPU Operator; use `--cuda-driver-version <version>` only when a specific install needs a different driver container.
 
 ## Prerequisites
 
@@ -59,6 +59,7 @@ The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single sourc
 - Internet access from the target node to Kubernetes and GitHub artifact endpoints
 - Internet access to Helm and the Kubernetes SIGs Helm repository when NFS provisioner is enabled
 - Internet access to Helm and NVIDIA artifact endpoints when GPU Operator is enabled
+- Internet access to the selected NVIDIA CUDA driver container image when GPU Operator is enabled
 - NVIDIA GPU present on the target node for full GPU Operator validation
 - When GPU Operator is enabled, CNS install removes active host CUDA/NVIDIA driver packages and disables Nouveau before Kubernetes deployment
 
@@ -72,7 +73,7 @@ The `cns.sh` wrapper runs the CNS Ansible playbook with the selected action and 
 | `./cns.sh install <stack-version>` | `<stack-version>` | Deploys the selected CNS stack. Supported values are `1.36`, `1.35`, `1.34`, and `1.33`. |
 | `./cns.sh install <stack-version> --gpu-operator` | `--gpu-operator` | Installs the NVIDIA GPU Operator. This is the default install behavior. |
 | `./cns.sh install <stack-version> --no-gpu-operator` | `--no-gpu-operator` | Skips GPU Operator deployment, GPU Operator validation, and host CUDA/NVIDIA driver cleanup. |
-| `./cns.sh install <stack-version> --cuda-driver-version <version>` | `--cuda-driver-version` | Deploys the requested GPU Operator CUDA driver container version instead of the stack default. |
+| `./cns.sh install <stack-version> --cuda-driver-version <version>` | `--cuda-driver-version <version>` | Deploys the requested GPU Operator CUDA driver container version instead of the stack default. |
 | `./cns.sh install <stack-version> --nfs-provisioner` | `--nfs-provisioner` | Installs the NFS server and `nfs-subdir-external-provisioner`. This is the default install behavior. |
 | `./cns.sh install <stack-version> --no-nfs-provisioner` | `--no-nfs-provisioner` | Skips NFS server setup, NFS export configuration, and NFS dynamic storage provisioner deployment. |
 | `./cns.sh uninstall` | None | Removes the deployed CNS stack from the target node. This command does not require a stack version. |
@@ -80,7 +81,7 @@ The `cns.sh` wrapper runs the CNS Ansible playbook with the selected action and 
 | `./cns.sh -h` | `-h` | Prints command usage, install options, and supported stack versions. |
 | `./cns.sh --help` | `--help` | Prints command usage, install options, and supported stack versions. |
 
-Install options may be combined. The default install behavior is equivalent to `./cns.sh install <stack-version> --gpu-operator --nfs-provisioner`.
+Install options may be combined. The default install behavior is equivalent to `./cns.sh install <stack-version> --gpu-operator --nfs-provisioner` with the selected stack file's CUDA driver container version. `--cuda-driver-version` requires GPU Operator installation and cannot be combined with `--no-gpu-operator`.
 
 ## Quick Start
 
@@ -93,7 +94,7 @@ chmod +x ./cns.sh
 ./cns.sh install 1.36
 ```
 
-By default, CNS also enables the node as an NFS server, exports `/srv/cns/nfs`, deploys `nfs-subdir-external-provisioner`, and creates the default `nfs-client` StorageClass.
+By default, CNS installs GPU Operator with the selected stack file's CUDA driver container version. CNS also enables the node as an NFS server, exports `/srv/cns/nfs`, deploys `nfs-subdir-external-provisioner`, and creates the default `nfs-client` StorageClass.
 
 To skip GPU Operator installation and leave host GPU drivers unmanaged by CNS:
 
@@ -106,6 +107,8 @@ To override the stack default CUDA driver container version used by GPU Operator
 ```bash
 ./cns.sh install 1.36 --cuda-driver-version 580.126.20
 ```
+
+The requested version is passed to the GPU Operator Helm release as `driver.version`. If the version does not exist in NVIDIA's registry or is not compatible with the target node, GPU Operator deployment can fail during install validation.
 
 To skip NFS server and dynamic storage provisioner setup:
 
@@ -158,6 +161,7 @@ The versions currently pinned in this repository are defined by the CNS 26.5.0 s
 - Kubernetes support/release pages: `1.36.0`, `1.35.4`, `1.34.7`, `1.33.11`
 - containerd GitHub releases: `2.3.0`
 - Project Calico GitHub releases: `3.32.0`
+- NVIDIA CUDA driver container: `580.126.20`
 - Kubernetes SIGs nfs-subdir-external-provisioner chart: `4.0.18`
 - NVIDIA GPU Operator docs/releases: `v26.3.1`
 - Helm GitHub releases: `v4.1.4`
