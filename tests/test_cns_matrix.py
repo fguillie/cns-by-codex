@@ -24,6 +24,7 @@ DEFAULT_HOST = "10.86.6.94"
 DEFAULT_USER = "nvidia"
 DEFAULT_COMMAND_TIMEOUT = 7200
 DEFAULT_WAIT_INTERVAL = 10
+CUDA_DRIVER_CONTAINER_VERSIONS = ("580.159.03", "580.126.20", "595.71.05")
 KUBECONFIG = "/etc/kubernetes/admin.conf"
 NFS_NAMESPACE = "nfs-provisioner"
 NFS_RELEASE = "nfs-subdir-external-provisioner"
@@ -59,6 +60,7 @@ class CaseResult:
     stack: str
     gpu_enabled: bool
     nfs_enabled: bool
+    cuda_driver_version: str
     install: str = "skip"
     rerun: str = "skip"
     validate: str = "skip"
@@ -121,22 +123,31 @@ class Runner:
         stack: Stack,
         gpu_enabled: bool,
         nfs_enabled: bool,
+        cuda_driver_version: str | None,
         log_path: pathlib.Path,
     ) -> CommandResult:
+        args = [
+            "-e",
+            "cns_action=install",
+            "-e",
+            f"cns_stack_version={stack.version}",
+            "-e",
+            f"cns_gpu_operator_enabled={bool_string(gpu_enabled)}",
+            "-e",
+            f"cns_nfs_provisioner_enabled={bool_string(nfs_enabled)}",
+            "-e",
+            f"@{stack.path}",
+        ]
+        if cuda_driver_version is not None:
+            args.extend(
+                [
+                    "-e",
+                    f"cns_cuda_driver_container_version={cuda_driver_version}",
+                ]
+            )
         return self.run_ansible(
             "install",
-            [
-                "-e",
-                "cns_action=install",
-                "-e",
-                f"cns_stack_version={stack.version}",
-                "-e",
-                f"cns_gpu_operator_enabled={bool_string(gpu_enabled)}",
-                "-e",
-                f"cns_nfs_provisioner_enabled={bool_string(nfs_enabled)}",
-                "-e",
-                f"@{stack.path}",
-            ],
+            args,
             log_path,
         )
 
@@ -234,7 +245,10 @@ def main() -> int:
     stacks = select_stacks(discover_stacks(repo_root), args.stack)
     gpu_values = select_bool_values(args.gpu)
     nfs_values = select_bool_values(args.nfs)
-    cases = list(itertools.product(stacks, gpu_values, nfs_values))
+    cuda_driver_versions = select_cuda_driver_versions(args.cuda_driver_version)
+    if True not in gpu_values and cuda_driver_versions != [None]:
+        raise SystemExit("--cuda-driver-version requires --gpu enabled or --gpu both.")
+    cases = build_cases(stacks, gpu_values, nfs_values, cuda_driver_versions)
     log_dir = make_log_dir(args.log_dir)
 
     with tempfile.TemporaryDirectory(prefix="cns-inventory-") as inventory_dir:
@@ -255,6 +269,7 @@ def main() -> int:
         print(f"Repository: {repo_root}")
         print(f"Target: {args.user}@{args.host}")
         print(f"Stacks: {', '.join(stack.version for stack in stacks)}")
+        print(f"CUDA driver versions: {format_cuda_driver_selection(cuda_driver_versions)}")
         print(f"Logs: {log_dir}")
         print()
 
@@ -269,6 +284,7 @@ def main() -> int:
                             stack="-",
                             gpu_enabled=False,
                             nfs_enabled=False,
+                            cuda_driver_version="-",
                             cleanup="fail",
                             reason="pre-clean uninstall failed",
                         )
@@ -277,10 +293,26 @@ def main() -> int:
                 return 1
 
         results: list[CaseResult] = []
-        for index, (stack, gpu_enabled, nfs_enabled) in enumerate(cases, start=1):
-            case_name = case_id(index, stack.version, gpu_enabled, nfs_enabled)
+        for index, (stack, gpu_enabled, nfs_enabled, cuda_driver_version) in enumerate(
+            cases,
+            start=1,
+        ):
+            case_name = case_id(
+                index,
+                stack.version,
+                gpu_enabled,
+                nfs_enabled,
+                cuda_driver_version,
+            )
             print(f"[{index}/{len(cases)}] {case_name}")
-            result = run_case(runner, case_name, stack, gpu_enabled, nfs_enabled)
+            result = run_case(
+                runner,
+                case_name,
+                stack,
+                gpu_enabled,
+                nfs_enabled,
+                cuda_driver_version,
+            )
             results.append(result)
             print_table(results)
             print()
@@ -326,6 +358,16 @@ def parse_args(repo_root: pathlib.Path) -> argparse.Namespace:
         choices=("enabled", "disabled", "both"),
         default="both",
         help="NFS provisioner option set to test.",
+    )
+    parser.add_argument(
+        "--cuda-driver-version",
+        action="append",
+        choices=CUDA_DRIVER_CONTAINER_VERSIONS,
+        default=[],
+        help=(
+            "CUDA driver container version override to test for GPU-enabled "
+            "cases. May be repeated. Defaults to the selected stack value."
+        ),
     )
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument(
@@ -441,6 +483,40 @@ def select_bool_values(value: str) -> list[bool]:
     return [True, False]
 
 
+def select_cuda_driver_versions(requested: list[str]) -> list[str | None]:
+    if not requested:
+        return [None]
+    return list(dict.fromkeys(requested))
+
+
+def build_cases(
+    stacks: list[Stack],
+    gpu_values: list[bool],
+    nfs_values: list[bool],
+    cuda_driver_versions: list[str | None],
+) -> list[tuple[Stack, bool, bool, str | None]]:
+    cases = []
+    for stack, gpu_enabled, nfs_enabled in itertools.product(
+        stacks,
+        gpu_values,
+        nfs_values,
+    ):
+        if gpu_enabled:
+            for cuda_driver_version in cuda_driver_versions:
+                cases.append((stack, gpu_enabled, nfs_enabled, cuda_driver_version))
+        else:
+            cases.append((stack, gpu_enabled, nfs_enabled, None))
+    return cases
+
+
+def format_cuda_driver_selection(cuda_driver_versions: list[str | None]) -> str:
+    labels = [
+        version if version is not None else "stack default"
+        for version in cuda_driver_versions
+    ]
+    return ", ".join(labels)
+
+
 def make_log_dir(requested: pathlib.Path | None) -> pathlib.Path:
     if requested:
         requested.mkdir(parents=True, exist_ok=True)
@@ -476,12 +552,18 @@ def run_case(
     stack: Stack,
     gpu_enabled: bool,
     nfs_enabled: bool,
+    cuda_driver_version: str | None,
 ) -> CaseResult:
     started = time.monotonic()
     result = CaseResult(
         stack=stack.version,
         gpu_enabled=gpu_enabled,
         nfs_enabled=nfs_enabled,
+        cuda_driver_version=case_cuda_driver_label(
+            stack,
+            gpu_enabled,
+            cuda_driver_version,
+        ),
     )
     case_log_dir = runner.log_dir / case_name
     case_log_dir.mkdir(parents=True, exist_ok=True)
@@ -492,6 +574,7 @@ def run_case(
             stack,
             gpu_enabled,
             nfs_enabled,
+            cuda_driver_version,
             case_log_dir / "01-install.log",
         )
         install_recap = parse_recap(install.stdout)
@@ -503,6 +586,7 @@ def run_case(
             stack,
             gpu_enabled,
             nfs_enabled,
+            cuda_driver_version,
             case_log_dir / "02-install-rerun.log",
         )
         rerun_recap = parse_recap(rerun.stdout)
@@ -519,6 +603,7 @@ def run_case(
             stack,
             gpu_enabled,
             nfs_enabled,
+            cuda_driver_version,
             case_log_dir,
         )
         result.validate = "pass"
@@ -565,6 +650,7 @@ def validate_install_state(
     stack: Stack,
     gpu_enabled: bool,
     nfs_enabled: bool,
+    cuda_driver_version: str | None,
     log_dir: pathlib.Path,
 ) -> None:
     wait_for_node_ready(runner, log_dir / "validate-node-ready.log")
@@ -577,7 +663,7 @@ def validate_install_state(
         validate_nfs_disabled(runner, log_dir)
 
     if gpu_enabled:
-        validate_gpu_enabled(runner, stack, log_dir)
+        validate_gpu_enabled(runner, stack, cuda_driver_version, log_dir)
     else:
         validate_gpu_disabled(runner, log_dir)
 
@@ -733,6 +819,7 @@ def validate_nfs_disabled(runner: Runner, log_dir: pathlib.Path) -> None:
 def validate_gpu_enabled(
     runner: Runner,
     stack: Stack,
+    cuda_driver_version: str | None,
     log_dir: pathlib.Path,
 ) -> None:
     releases = helm_releases(runner, GPU_NAMESPACE, log_dir / "validate-gpu-helm.log")
@@ -749,10 +836,11 @@ def validate_gpu_enabled(
     )
     driver = values.get("driver", {})
     driver_version = driver.get("version") if isinstance(driver, dict) else None
-    if driver_version != stack.cuda_driver_container_version:
+    expected_driver_version = cuda_driver_version or stack.cuda_driver_container_version
+    if driver_version != expected_driver_version:
         raise RuntimeError(
             "GPU driver container version mismatch: "
-            f"got {driver_version!r}, want {stack.cuda_driver_container_version!r}"
+            f"got {driver_version!r}, want {expected_driver_version!r}"
         )
 
     runner.wait_for(
@@ -1066,16 +1154,43 @@ def bool_string(value: bool) -> str:
     return "true" if value else "false"
 
 
-def case_id(index: int, stack: str, gpu_enabled: bool, nfs_enabled: bool) -> str:
+def case_cuda_driver_label(
+    stack: Stack,
+    gpu_enabled: bool,
+    cuda_driver_version: str | None,
+) -> str:
+    if not gpu_enabled:
+        return "-"
+    if cuda_driver_version is not None:
+        return cuda_driver_version
+    return f"stack:{stack.cuda_driver_container_version}"
+
+
+def case_id(
+    index: int,
+    stack: str,
+    gpu_enabled: bool,
+    nfs_enabled: bool,
+    cuda_driver_version: str | None,
+) -> str:
     gpu = "gpu" if gpu_enabled else "no-gpu"
     nfs = "nfs" if nfs_enabled else "no-nfs"
-    return f"{index:02d}-stack-{stack}-{gpu}-{nfs}"
+    parts = [f"{index:02d}", "stack", stack, gpu, nfs]
+    if gpu_enabled:
+        driver = cuda_driver_version if cuda_driver_version is not None else "stack"
+        parts.extend(["driver", slug(driver)])
+    return "-".join(parts)
+
+
+def slug(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "-", value).strip("-").lower()
 
 
 def print_table(results: list[CaseResult]) -> None:
     headers = [
         "STACK",
         "GPU",
+        "CUDA_DRIVER",
         "NFS",
         "INSTALL",
         "RERUN",
@@ -1090,6 +1205,7 @@ def print_table(results: list[CaseResult]) -> None:
         [
             result.stack,
             "on" if result.gpu_enabled else "off",
+            result.cuda_driver_version,
             "on" if result.nfs_enabled else "off",
             result.install,
             result.rerun,
