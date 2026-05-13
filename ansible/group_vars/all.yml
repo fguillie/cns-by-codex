@@ -44,6 +44,16 @@ gpu_operator_release_name: gpu-operator
 gpu_operator_repo_name: nvidia
 gpu_operator_repo_url: https://helm.ngc.nvidia.com/nvidia
 gpu_operator_chart: nvidia/gpu-operator
+gpu_operator_driver_kernel_module_type: proprietary
+gpu_operator_driver_kernel_module_config_name: cns-nvidia-driver-kernel-module-config
+gpu_operator_driver_kernel_module_config_nvidia_conf: "NVreg_EnableGpuFirmware=0"
+gpu_operator_runtime_mount_paths:
+  - /run/nvidia/driver
+gpu_operator_runtime_artifact_paths:
+  - /run/nvidia
+  - /usr/local/nvidia
+  - /var/run/cdi
+  - /etc/containerd/conf.d/99-nvidia.toml
 
 nfs_provisioner_namespace: nfs-provisioner
 nfs_provisioner_release_name: nfs-subdir-external-provisioner

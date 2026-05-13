@@ -33,6 +33,8 @@ NFS_CHART_PREFIX = "nfs-subdir-external-provisioner-"
 GPU_NAMESPACE = "gpu-operator"
 GPU_RELEASE = "gpu-operator"
 GPU_CHART_PREFIX = "gpu-operator-"
+GPU_DRIVER_KERNEL_MODULE_TYPE = "proprietary"
+GPU_DRIVER_KERNEL_MODULE_CONFIG_NAME = "cns-nvidia-driver-kernel-module-config"
 NFS_EXPORT_FILE = "/etc/exports.d/cns-nfs-provisioner.exports"
 NFS_EXPORT_PATH = "/srv/cns/nfs"
 
@@ -841,6 +843,26 @@ def validate_gpu_enabled(
         raise RuntimeError(
             "GPU driver container version mismatch: "
             f"got {driver_version!r}, want {expected_driver_version!r}"
+        )
+    kernel_module_type = driver.get("kernelModuleType") if isinstance(driver, dict) else None
+    if kernel_module_type != GPU_DRIVER_KERNEL_MODULE_TYPE:
+        raise RuntimeError(
+            "GPU driver kernel module type mismatch: "
+            f"got {kernel_module_type!r}, want {GPU_DRIVER_KERNEL_MODULE_TYPE!r}"
+        )
+    kernel_module_config = (
+        driver.get("kernelModuleConfig", {}) if isinstance(driver, dict) else {}
+    )
+    kernel_module_config_name = (
+        kernel_module_config.get("name")
+        if isinstance(kernel_module_config, dict)
+        else None
+    )
+    if kernel_module_config_name != GPU_DRIVER_KERNEL_MODULE_CONFIG_NAME:
+        raise RuntimeError(
+            "GPU driver kernel module config mismatch: "
+            f"got {kernel_module_config_name!r}, "
+            f"want {GPU_DRIVER_KERNEL_MODULE_CONFIG_NAME!r}"
         )
 
     runner.wait_for(

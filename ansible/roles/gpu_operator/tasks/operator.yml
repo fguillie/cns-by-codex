@@ -44,6 +44,39 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
   changed_when: false
 
+- name: Inspect GPU Operator driver kernel module config
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - get
+      - configmap
+      - "{{ gpu_operator_driver_kernel_module_config_name }}"
+      - -n
+      - "{{ gpu_operator_namespace }}"
+      - -o
+      - jsonpath={.data.nvidia\.conf}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: gpu_operator_kernel_module_config
+  failed_when: false
+  changed_when: false
+
+- name: Configure GPU Operator driver kernel module params
+  ansible.builtin.shell:
+    cmd: >
+      kubectl -n {{ gpu_operator_namespace | quote }}
+      create configmap {{ gpu_operator_driver_kernel_module_config_name | quote }}
+      --from-literal=nvidia.conf={{ gpu_operator_driver_kernel_module_config_nvidia_conf | quote }}
+      --dry-run=client -o yaml |
+      kubectl apply -f -
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: gpu_operator_kernel_module_config_apply
+  changed_when: gpu_operator_kernel_module_config_apply.stdout is search('created|configured')
+  when: >
+    gpu_operator_kernel_module_config.rc != 0 or
+    gpu_operator_kernel_module_config.stdout != gpu_operator_driver_kernel_module_config_nvidia_conf
+
 - name: Check configured Helm repositories
   ansible.builtin.command:
     argv:
@@ -92,7 +125,7 @@
 
 - name: Set current GPU Operator driver container version
   ansible.builtin.set_fact:
-    gpu_operator_current_driver_version: "{{ ((gpu_operator_release_values.stdout | default('{}', true) | from_json | default({}, true)).get('driver', {}).get('version', '')) }}"
+    gpu_operator_current_driver_values: "{{ (gpu_operator_release_values.stdout | default('{}', true) | from_json | default({}, true)).get('driver', {}) }}"
   when: gpu_operator_current_release | length > 0
 
 - name: Add NVIDIA Helm repository
@@ -131,6 +164,10 @@
       - operator.defaultRuntime=containerd
       - --set-string
       - driver.version={{ gpu_operator_driver_version }}
+      - --set
+      - driver.kernelModuleType={{ gpu_operator_driver_kernel_module_type }}
+      - --set
+      - driver.kernelModuleConfig.name={{ gpu_operator_driver_kernel_module_config_name }}
       - --wait
       - --timeout=20m
   environment:
@@ -141,7 +178,9 @@
     (gpu_operator_current_release | length) == 0 or
     gpu_operator_current_release.get('status', '') != 'deployed' or
     gpu_operator_current_release.get('chart', '') != ('gpu-operator-' ~ gpu_operator_version) or
-    (gpu_operator_current_driver_version | default('')) != gpu_operator_driver_version
+    (gpu_operator_current_driver_values | default({})).get('version', '') != gpu_operator_driver_version or
+    (gpu_operator_current_driver_values | default({})).get('kernelModuleType', '') != gpu_operator_driver_kernel_module_type or
+    (gpu_operator_current_driver_values | default({})).get('kernelModuleConfig', {}).get('name', '') != gpu_operator_driver_kernel_module_config_name
 
 - name: Wait for GPU Operator pods to appear
   ansible.builtin.command:

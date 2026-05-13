@@ -59,6 +59,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
   - `/etc/containerd/conf.d`
   - `imports = ["/etc/containerd/conf.d/*.toml"]` in `/etc/containerd/config.toml`
   - `operator.defaultRuntime=containerd` in the Helm install path
+- Preserve `driver.kernelModuleType=proprietary` and the CNS GPU Operator kernel module config unless GPU Operator is revalidated on a live host. Driver containers `580.159.03` and `595.71.05` required `NVreg_EnableGpuFirmware=0` on the QA host because the open kernel module path failed when GSP firmware files were unavailable.
 - Containerd `2.3.0` requires a root config with `version = 4`; a v2 root config breaks GPU Operator generated v4 drop-ins.
 - On already initialized nodes with a v4 containerd config, do not rewrite `/etc/containerd/config.toml`; GPU Operator may have added runtime settings that must survive steady-state reruns.
 - Do not remove the shared `helm_client` role unless GPU Operator and NFS provisioner Helm lifecycle ordering is revalidated. Helm must remain available until both Helm-backed components have been removed during uninstall.
@@ -90,6 +91,8 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Inside the `precheck` role, cleanup is skipped when `/etc/kubernetes/admin.conf` already exists so steady-state install reruns do not remove GPU Operator-managed drivers.
 - When GPU Operator is disabled, CNS must not remove existing host CUDA/NVIDIA driver packages or Nouveau state.
 - When GPU Operator is enabled, the `gpu_operator` role passes the effective CUDA driver container version to Helm as `driver.version`.
+- When GPU Operator is enabled, the `gpu_operator` role creates the CNS driver kernel module config and passes it to Helm with `driver.kernelModuleConfig.name`.
+- GPU Operator uninstall and fresh-install precheck remove CNS-managed GPU Operator runtime artifacts such as `/run/nvidia`, `/usr/local/nvidia`, `/var/run/cdi`, and `/etc/containerd/conf.d/99-nvidia.toml`; this prevents stale driver container libraries from carrying across CUDA driver version changes.
 - The `kubernetes` role resolves `cns_admin_home` from `getent passwd <cns_admin_user>` before install or uninstall tasks.
 - The `helm_client` role runs after Kubernetes install and before any enabled Helm-backed component.
 - The `nfs_provisioner` role installs `nfs-kernel-server`, exports `/srv/cns/nfs`, deploys the `nfs-subdir-external-provisioner` Helm release, and creates the default `nfs-client` StorageClass.
@@ -171,6 +174,7 @@ For live install validation with GPU Operator enabled, confirm:
 - Calico pods are running
 - the GPU Operator Helm release is deployed at the pinned chart version
 - the GPU Operator Helm release values include the expected `driver.version`
+- the GPU Operator Helm release values include `driver.kernelModuleType=proprietary` and the CNS `driver.kernelModuleConfig.name`
 - `ClusterPolicy` reaches `ready`
 - the node reports `nvidia.com/gpu`
 - the selected admin user can run `kubectl` without setting `KUBECONFIG`
@@ -202,6 +206,7 @@ The NFS provisioner matrix was validated against `10.86.6.94` on May 9-10, 2026 
 - For the validated GPU Operator toggle paths, steady-state reruns for each stack and option should complete with `changed=0`.
 - GPU Operator reruns must not overwrite the GPU Operator managed containerd runtime configuration.
 - GPU Operator reruns must not reinstall or upgrade the Helm release when the deployed chart version and `driver.version` already match the selected stack or install-time override.
+- GPU Operator reruns must not reinstall or upgrade the Helm release when the deployed kernel module type and config name already match CNS defaults.
 - Changing `--cuda-driver-version` on a GPU-enabled install rerun should trigger a Helm upgrade so the requested `driver.version` is applied.
 - For the validated NFS provisioner toggle paths, steady-state reruns for each stack and option should complete with `changed=0`.
 - NFS provisioner reruns must not reinstall or upgrade the Helm release when the deployed chart version already matches the selected stack.

@@ -60,3 +60,50 @@
   failed_when: false
   changed_when: "'deleted' in gpu_operator_ns_delete.stdout"
   when: gpu_operator_kubeconfig.stat.exists
+
+- name: Wait for GPU Operator namespace removal
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - wait
+      - --for=delete
+      - namespace/{{ gpu_operator_namespace }}
+      - --timeout=5m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: gpu_operator_ns_wait
+  failed_when: false
+  changed_when: false
+  when:
+    - gpu_operator_kubeconfig.stat.exists
+    - "'deleted' in gpu_operator_ns_delete.stdout"
+
+- name: Remove GPU Operator runtime artifacts
+  ansible.builtin.shell: |
+    set -o pipefail
+    changed=0
+
+    for path in {{ gpu_operator_runtime_mount_paths | map('quote') | join(' ') }}; do
+      mounted_targets="$(findmnt -Rnr -o TARGET "$path" 2>/dev/null | sort -r || true)"
+      if [ -n "$mounted_targets" ]; then
+        while IFS= read -r target; do
+          umount "$target" || umount -l "$target"
+        done <<< "$mounted_targets"
+        changed=1
+      fi
+    done
+
+    for path in {{ gpu_operator_runtime_artifact_paths | map('quote') | join(' ') }}; do
+      if [ -e "$path" ] || [ -L "$path" ]; then
+        rm -rf --one-file-system "$path"
+        changed=1
+      fi
+    done
+
+    if [ "$changed" -eq 1 ]; then
+      echo changed
+    fi
+  args:
+    executable: /bin/bash
+  register: gpu_operator_runtime_cleanup
+  changed_when: "'changed' in gpu_operator_runtime_cleanup.stdout"
