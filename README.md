@@ -45,6 +45,7 @@ CNS keeps one stack file per supported Kubernetes minor release branch.
 | Containerd | `2.3.0` | `2.3.0` | `2.3.0` | `2.3.0` |
 | Calico | `3.32.0` | `3.32.0` | `3.32.0` | `3.32.0` |
 | GPU Operator | `v26.3.1` | `v26.3.1` | `v26.3.1` | `v26.3.1` |
+| CUDA driver container | `580.126.20` | `580.126.20` | `580.126.20` | `580.126.20` |
 | Helm | `v4.1.4` | `v4.1.4` | `v4.1.4` | `v4.1.4` |
 | NFS provisioner | `4.0.18` | `4.0.18` | `4.0.18` | `4.0.18` |
 
@@ -60,6 +61,25 @@ The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single sourc
 - Internet access to Helm and NVIDIA artifact endpoints when GPU Operator is enabled
 - NVIDIA GPU present on the target node for full GPU Operator validation
 - When GPU Operator is enabled, CNS install removes active host CUDA/NVIDIA driver packages and disables Nouveau before Kubernetes deployment
+
+## cns.sh Command
+
+The `cns.sh` wrapper runs the CNS Ansible playbook with the selected action and install options.
+
+| Command | Option or argument | Description |
+| --- | --- | --- |
+| `./cns.sh` | None | Prints command usage, install options, and supported stack versions. |
+| `./cns.sh install <stack-version>` | `<stack-version>` | Deploys the selected CNS stack. Supported values are `1.36`, `1.35`, `1.34`, and `1.33`. |
+| `./cns.sh install <stack-version> --gpu-operator` | `--gpu-operator` | Installs the NVIDIA GPU Operator. This is the default install behavior. |
+| `./cns.sh install <stack-version> --no-gpu-operator` | `--no-gpu-operator` | Skips GPU Operator deployment, GPU Operator validation, and host CUDA/NVIDIA driver cleanup. |
+| `./cns.sh install <stack-version> --nfs-provisioner` | `--nfs-provisioner` | Installs the NFS server and `nfs-subdir-external-provisioner`. This is the default install behavior. |
+| `./cns.sh install <stack-version> --no-nfs-provisioner` | `--no-nfs-provisioner` | Skips NFS server setup, NFS export configuration, and NFS dynamic storage provisioner deployment. |
+| `./cns.sh uninstall` | None | Removes the deployed CNS stack from the target node. This command does not require a stack version. |
+| `./cns.sh help` | `help` | Prints command usage, install options, and supported stack versions. |
+| `./cns.sh -h` | `-h` | Prints command usage, install options, and supported stack versions. |
+| `./cns.sh --help` | `--help` | Prints command usage, install options, and supported stack versions. |
+
+Install options may be combined. The default install behavior is equivalent to `./cns.sh install <stack-version> --gpu-operator --nfs-provisioner`.
 
 ## Quick Start
 
