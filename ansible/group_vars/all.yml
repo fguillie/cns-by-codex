@@ -3,8 +3,6 @@
 default_calico_version: "3.32.0"
 cns_action: install
 cns_cluster_name: cns
-cns_gpu_operator_enabled: true
-cns_nfs_provisioner_enabled: true
 cns_pod_cidr: 192.168.0.0/16
 cns_service_cidr: 10.96.0.0/12
 cns_admin_user: "{{ ansible_user | default('ubuntu') }}"

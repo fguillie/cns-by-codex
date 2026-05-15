@@ -19,18 +19,19 @@ The default deployment sequence is:
 9. Deploy `nfs-subdir-external-provisioner`.
 10. Deploy the NVIDIA GPU Operator.
 
-When `--no-gpu-operator` is passed to `cns.sh install`, CNS skips the driver cleanup pre-checks and GPU Operator deployment.
-When `--cuda-driver-version` is passed, CNS overrides the stack default GPU Operator CUDA driver container version for that install.
-When `--no-nfs-provisioner` is passed, CNS skips NFS server setup and the NFS provisioner Helm release.
+When `--set install_gpu_operator=false` is passed to `cns.sh install`, CNS skips the driver cleanup pre-checks and GPU Operator deployment.
+When `--set cuda_driver_container_version=<version>` is passed, CNS overrides the stack default GPU Operator CUDA driver container version for that install.
+When `--set install_nfs_provisioner=false` is passed, CNS skips NFS server setup and the NFS provisioner Helm release.
 
 ## Main Components
 
 - `cns.sh`
   - Validates CLI input.
   - Selects the requested stack file.
+  - Applies validated `--set` overrides for stack parameters.
   - Calls `ansible-playbook`.
 - `stacks/*.yml`
-  - Hold pinned component versions, including the default CUDA driver container version, for each CNS stack.
+  - Hold pinned component versions and default install choices for each CNS stack.
 - `ansible/roles/kubernetes`
   - Handles host prep, containerd, Kubernetes, and Calico.
 - `ansible/roles/helm_client`

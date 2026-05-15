@@ -32,20 +32,22 @@ It also installs an NFS server, exports `/srv/cns/nfs`, deploys `nfs-subdir-exte
 To install only Kubernetes, containerd, and Calico without GPU Operator or host driver cleanup:
 
 ```bash
-./cns.sh install 1.36 --no-gpu-operator
+./cns.sh install 1.36 --set install_gpu_operator=false --set install_nfs_provisioner=false
 ```
 
 To deploy a specific GPU Operator CUDA driver container version:
 
 ```bash
-./cns.sh install 1.36 --cuda-driver-version 580.126.20
+./cns.sh install 1.36 --set cuda_driver_container_version=580.126.20
 ```
 
 To skip NFS server and dynamic storage provisioner setup:
 
 ```bash
-./cns.sh install 1.36 --no-nfs-provisioner
+./cns.sh install 1.36 --set install_nfs_provisioner=false
 ```
+
+`--set` may override any top-level key defined in the selected stack file. Unknown keys fail before Ansible starts, and install toggle values must be `true` or `false`.
 
 ## Uninstall
 
@@ -64,9 +66,10 @@ ansible-playbook -i ansible/inventory/hosts.ini ansible/site.yml \
   -e @stacks/1.36.yml
 ```
 
-Set `-e cns_gpu_operator_enabled=false` to skip GPU Operator deployment when running Ansible directly.
-Set `-e cns_cuda_driver_container_version=580.126.20` to override the stack default GPU Operator CUDA driver container version.
-Set `-e cns_nfs_provisioner_enabled=false` to skip NFS server and provisioner setup.
+Set `-e install_gpu_operator=false` to skip GPU Operator deployment when running Ansible directly.
+Set `-e cuda_driver_container_version=580.126.20` to override the stack default GPU Operator CUDA driver container version.
+Set `-e install_nfs_provisioner=false` to skip NFS server and provisioner setup.
+Place these override arguments after `-e @stacks/<version>.yml` so they take precedence over stack defaults.
 
 ## Expected Outcome
 
@@ -76,5 +79,5 @@ After a successful install:
 - Calico pods are healthy
 - `kubectl get storageclass nfs-client` exists and is marked as the default StorageClass when NFS provisioner is enabled
 - With GPU Operator enabled, GPU Operator resources exist in the `gpu-operator` namespace
-- With `--no-gpu-operator`, host GPU driver management remains outside CNS
-- With `--no-nfs-provisioner`, NFS server and dynamic storage management remain outside CNS
+- With `--set install_gpu_operator=false`, host GPU driver management remains outside CNS
+- With `--set install_nfs_provisioner=false`, NFS server and dynamic storage management remain outside CNS

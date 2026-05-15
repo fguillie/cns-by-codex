@@ -2,7 +2,7 @@
 # Deploys and verifies the NVIDIA GPU Operator release.
 - name: Set desired GPU Operator driver container version
   ansible.builtin.set_fact:
-    gpu_operator_driver_version: "{{ cns_cuda_driver_container_version | default(cuda_driver_container_version | default('', true), true) }}"
+    gpu_operator_driver_version: "{{ cuda_driver_container_version }}"
 
 - name: Label GPU Operator namespace for privileged PSA
   ansible.builtin.command:

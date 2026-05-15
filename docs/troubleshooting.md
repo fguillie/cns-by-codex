@@ -35,7 +35,7 @@
 
 - Verify the node has an NVIDIA GPU.
 - Check whether the host driver is already installed or whether the driver container can build/install.
-- If `--cuda-driver-version` was used, confirm that driver container version exists in NVIDIA's registry.
+- If `--set cuda_driver_container_version=<version>` was used, confirm that driver container version exists in NVIDIA's registry.
 - CNS configures GPU Operator to use proprietary NVIDIA kernel modules with `NVreg_EnableGpuFirmware=0` so validated driver containers do not depend on GSP firmware files being present on the host.
 - Inspect `kubectl get pods -n gpu-operator` and `kubectl logs -n gpu-operator <pod>`.
 

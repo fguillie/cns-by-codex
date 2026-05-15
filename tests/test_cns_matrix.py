@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import os
 import pathlib
@@ -24,7 +23,10 @@ DEFAULT_HOST = "10.86.6.94"
 DEFAULT_USER = "nvidia"
 DEFAULT_COMMAND_TIMEOUT = 7200
 DEFAULT_WAIT_INTERVAL = 10
-CUDA_DRIVER_CONTAINER_VERSIONS = ("580.159.03", "580.126.20", "595.71.05")
+CUDA_DRIVER_CONTAINER_VERSION_KEY = "cuda_driver_container_version"
+INSTALL_GPU_OPERATOR_KEY = "install_gpu_operator"
+INSTALL_NFS_PROVISIONER_KEY = "install_nfs_provisioner"
+STACK_BOOL_KEYS = frozenset((INSTALL_GPU_OPERATOR_KEY, INSTALL_NFS_PROVISIONER_KEY))
 KUBECONFIG = "/etc/kubernetes/admin.conf"
 NFS_NAMESPACE = "nfs-provisioner"
 NFS_RELEASE = "nfs-subdir-external-provisioner"
@@ -43,6 +45,16 @@ NFS_EXPORT_PATH = "/srv/cns/nfs"
 class Stack:
     version: str
     path: pathlib.Path
+    parameters: dict[str, str]
+    gpu_operator_version: str
+    cuda_driver_container_version: str
+    nfs_provisioner_version: str
+
+
+@dataclass(frozen=True)
+class StackConfig:
+    install_gpu_operator: bool
+    install_nfs_provisioner: bool
     gpu_operator_version: str
     cuda_driver_container_version: str
     nfs_provisioner_version: str
@@ -123,9 +135,7 @@ class Runner:
     def run_install(
         self,
         stack: Stack,
-        gpu_enabled: bool,
-        nfs_enabled: bool,
-        cuda_driver_version: str | None,
+        overrides: dict[str, str],
         log_path: pathlib.Path,
     ) -> CommandResult:
         args = [
@@ -134,19 +144,9 @@ class Runner:
             "-e",
             f"cns_stack_version={stack.version}",
             "-e",
-            f"cns_gpu_operator_enabled={bool_string(gpu_enabled)}",
-            "-e",
-            f"cns_nfs_provisioner_enabled={bool_string(nfs_enabled)}",
-            "-e",
             f"@{stack.path}",
         ]
-        if cuda_driver_version is not None:
-            args.extend(
-                [
-                    "-e",
-                    f"cns_cuda_driver_container_version={cuda_driver_version}",
-                ]
-            )
+        args.extend(stack_override_args(stack, overrides))
         return self.run_ansible(
             "install",
             args,
@@ -245,12 +245,8 @@ def main() -> int:
         return 2
 
     stacks = select_stacks(discover_stacks(repo_root), args.stack)
-    gpu_values = select_bool_values(args.gpu)
-    nfs_values = select_bool_values(args.nfs)
-    cuda_driver_versions = select_cuda_driver_versions(args.cuda_driver_version)
-    if True not in gpu_values and cuda_driver_versions != [None]:
-        raise SystemExit("--cuda-driver-version requires --gpu enabled or --gpu both.")
-    cases = build_cases(stacks, gpu_values, nfs_values, cuda_driver_versions)
+    overrides = parse_set_overrides(args.set_overrides)
+    cases = build_cases(stacks, overrides)
     log_dir = make_log_dir(args.log_dir)
 
     with tempfile.TemporaryDirectory(prefix="cns-inventory-") as inventory_dir:
@@ -271,7 +267,7 @@ def main() -> int:
         print(f"Repository: {repo_root}")
         print(f"Target: {args.user}@{args.host}")
         print(f"Stacks: {', '.join(stack.version for stack in stacks)}")
-        print(f"CUDA driver versions: {format_cuda_driver_selection(cuda_driver_versions)}")
+        print(f"Stack overrides: {format_stack_overrides(overrides)}")
         print(f"Logs: {log_dir}")
         print()
 
@@ -295,25 +291,23 @@ def main() -> int:
                 return 1
 
         results: list[CaseResult] = []
-        for index, (stack, gpu_enabled, nfs_enabled, cuda_driver_version) in enumerate(
+        for index, (stack, case_overrides) in enumerate(
             cases,
             start=1,
         ):
+            config = effective_stack_config(stack, case_overrides)
             case_name = case_id(
                 index,
                 stack.version,
-                gpu_enabled,
-                nfs_enabled,
-                cuda_driver_version,
+                config,
+                case_overrides,
             )
             print(f"[{index}/{len(cases)}] {case_name}")
             result = run_case(
                 runner,
                 case_name,
                 stack,
-                gpu_enabled,
-                nfs_enabled,
-                cuda_driver_version,
+                case_overrides,
             )
             results.append(result)
             print_table(results)
@@ -350,26 +344,12 @@ def parse_args(repo_root: pathlib.Path) -> argparse.Namespace:
         help="Stack version to test. May be repeated. Defaults to all stacks.",
     )
     parser.add_argument(
-        "--gpu",
-        choices=("enabled", "disabled", "both"),
-        default="both",
-        help="GPU Operator option set to test.",
-    )
-    parser.add_argument(
-        "--nfs",
-        choices=("enabled", "disabled", "both"),
-        default="both",
-        help="NFS provisioner option set to test.",
-    )
-    parser.add_argument(
-        "--cuda-driver-version",
+        "--set",
+        dest="set_overrides",
+        metavar="KEY=VALUE",
         action="append",
-        choices=CUDA_DRIVER_CONTAINER_VERSIONS,
         default=[],
-        help=(
-            "CUDA driver container version override to test for GPU-enabled "
-            "cases. May be repeated. Defaults to the selected stack value."
-        ),
+        help="Override a top-level key defined in each selected stack file.",
     )
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument(
@@ -413,7 +393,17 @@ def discover_stacks(repo_root: pathlib.Path) -> list[Stack]:
         data = parse_simple_yaml(path)
         version = data.get("cns_stack_version", path.stem)
         gpu_version = require_key(data, "gpu_operator_version", path)
-        cuda_driver_version = require_key(data, "cuda_driver_container_version", path)
+        cuda_driver_version = require_key(data, CUDA_DRIVER_CONTAINER_VERSION_KEY, path)
+        parse_stack_bool(
+            require_key(data, INSTALL_GPU_OPERATOR_KEY, path),
+            INSTALL_GPU_OPERATOR_KEY,
+            path,
+        )
+        parse_stack_bool(
+            require_key(data, INSTALL_NFS_PROVISIONER_KEY, path),
+            INSTALL_NFS_PROVISIONER_KEY,
+            path,
+        )
         nfs_version = require_key(
             data,
             "nfs_subdir_external_provisioner_version",
@@ -423,6 +413,7 @@ def discover_stacks(repo_root: pathlib.Path) -> list[Stack]:
             Stack(
                 version=version,
                 path=path.resolve(),
+                parameters=data,
                 gpu_operator_version=gpu_version,
                 cuda_driver_container_version=cuda_driver_version,
                 nfs_provisioner_version=nfs_version,
@@ -462,6 +453,88 @@ def require_key(data: dict[str, str], key: str, path: pathlib.Path) -> str:
     return value
 
 
+def parse_stack_bool(value: str, key: str, path: pathlib.Path) -> bool:
+    normalized = value.lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise SystemExit(f"{path} has invalid {key}: {value!r}; expected true or false.")
+
+
+def parse_set_overrides(values: list[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for item in values:
+        if "=" not in item:
+            raise SystemExit(f"Invalid --set value: {item}. Expected key=value.")
+        key, value = item.split("=", 1)
+        if not key or not value:
+            raise SystemExit(
+                f"Invalid --set value: {item}. Expected non-empty key and value."
+            )
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            raise SystemExit(f"Invalid --set key: {key}.")
+        if key in STACK_BOOL_KEYS and value.lower() not in ("true", "false"):
+            raise SystemExit(
+                f"Invalid value for {key}: {value!r}; expected true or false."
+            )
+        overrides[key] = value
+    return overrides
+
+
+def stack_override_args(stack: Stack, overrides: dict[str, str]) -> list[str]:
+    validate_stack_overrides(stack, overrides)
+
+    args: list[str] = []
+    for key, value in overrides.items():
+        args.extend(["-e", f"{key}={value}"])
+    return args
+
+
+def validate_stack_overrides(stack: Stack, overrides: dict[str, str]) -> None:
+    missing = [key for key in overrides if key not in stack.parameters]
+    if missing:
+        raise SystemExit(
+            f"{stack.path} does not define stack parameter(s): "
+            f"{', '.join(sorted(missing))}"
+        )
+
+    config = effective_stack_config(stack, overrides)
+    if CUDA_DRIVER_CONTAINER_VERSION_KEY in overrides and not config.install_gpu_operator:
+        raise SystemExit(
+            f"{CUDA_DRIVER_CONTAINER_VERSION_KEY} requires "
+            f"{INSTALL_GPU_OPERATOR_KEY}=true for {stack.path}."
+        )
+
+
+def effective_stack_config(stack: Stack, overrides: dict[str, str]) -> StackConfig:
+    values = dict(stack.parameters)
+    values.update(overrides)
+    return StackConfig(
+        install_gpu_operator=parse_stack_bool(
+            require_key(values, INSTALL_GPU_OPERATOR_KEY, stack.path),
+            INSTALL_GPU_OPERATOR_KEY,
+            stack.path,
+        ),
+        install_nfs_provisioner=parse_stack_bool(
+            require_key(values, INSTALL_NFS_PROVISIONER_KEY, stack.path),
+            INSTALL_NFS_PROVISIONER_KEY,
+            stack.path,
+        ),
+        gpu_operator_version=require_key(values, "gpu_operator_version", stack.path),
+        cuda_driver_container_version=require_key(
+            values,
+            CUDA_DRIVER_CONTAINER_VERSION_KEY,
+            stack.path,
+        ),
+        nfs_provisioner_version=require_key(
+            values,
+            "nfs_subdir_external_provisioner_version",
+            stack.path,
+        ),
+    )
+
+
 def select_stacks(stacks: list[Stack], requested: list[str]) -> list[Stack]:
     if not requested:
         return stacks
@@ -477,46 +550,21 @@ def select_stacks(stacks: list[Stack], requested: list[str]) -> list[Stack]:
     return selected
 
 
-def select_bool_values(value: str) -> list[bool]:
-    if value == "enabled":
-        return [True]
-    if value == "disabled":
-        return [False]
-    return [True, False]
-
-
-def select_cuda_driver_versions(requested: list[str]) -> list[str | None]:
-    if not requested:
-        return [None]
-    return list(dict.fromkeys(requested))
-
-
 def build_cases(
     stacks: list[Stack],
-    gpu_values: list[bool],
-    nfs_values: list[bool],
-    cuda_driver_versions: list[str | None],
-) -> list[tuple[Stack, bool, bool, str | None]]:
+    overrides: dict[str, str],
+) -> list[tuple[Stack, dict[str, str]]]:
     cases = []
-    for stack, gpu_enabled, nfs_enabled in itertools.product(
-        stacks,
-        gpu_values,
-        nfs_values,
-    ):
-        if gpu_enabled:
-            for cuda_driver_version in cuda_driver_versions:
-                cases.append((stack, gpu_enabled, nfs_enabled, cuda_driver_version))
-        else:
-            cases.append((stack, gpu_enabled, nfs_enabled, None))
+    for stack in stacks:
+        validate_stack_overrides(stack, overrides)
+        cases.append((stack, dict(overrides)))
     return cases
 
 
-def format_cuda_driver_selection(cuda_driver_versions: list[str | None]) -> str:
-    labels = [
-        version if version is not None else "stack default"
-        for version in cuda_driver_versions
-    ]
-    return ", ".join(labels)
+def format_stack_overrides(overrides: dict[str, str]) -> str:
+    if not overrides:
+        return "none"
+    return ", ".join(f"{key}={value}" for key, value in overrides.items())
 
 
 def make_log_dir(requested: pathlib.Path | None) -> pathlib.Path:
@@ -552,19 +600,17 @@ def run_case(
     runner: Runner,
     case_name: str,
     stack: Stack,
-    gpu_enabled: bool,
-    nfs_enabled: bool,
-    cuda_driver_version: str | None,
+    overrides: dict[str, str],
 ) -> CaseResult:
     started = time.monotonic()
+    config = effective_stack_config(stack, overrides)
     result = CaseResult(
         stack=stack.version,
-        gpu_enabled=gpu_enabled,
-        nfs_enabled=nfs_enabled,
+        gpu_enabled=config.install_gpu_operator,
+        nfs_enabled=config.install_nfs_provisioner,
         cuda_driver_version=case_cuda_driver_label(
-            stack,
-            gpu_enabled,
-            cuda_driver_version,
+            config,
+            overrides,
         ),
     )
     case_log_dir = runner.log_dir / case_name
@@ -574,9 +620,7 @@ def run_case(
     try:
         install = runner.run_install(
             stack,
-            gpu_enabled,
-            nfs_enabled,
-            cuda_driver_version,
+            overrides,
             case_log_dir / "01-install.log",
         )
         install_recap = parse_recap(install.stdout)
@@ -586,9 +630,7 @@ def run_case(
 
         rerun = runner.run_install(
             stack,
-            gpu_enabled,
-            nfs_enabled,
-            cuda_driver_version,
+            overrides,
             case_log_dir / "02-install-rerun.log",
         )
         rerun_recap = parse_recap(rerun.stdout)
@@ -602,10 +644,7 @@ def run_case(
 
         validate_install_state(
             runner,
-            stack,
-            gpu_enabled,
-            nfs_enabled,
-            cuda_driver_version,
+            config,
             case_log_dir,
         )
         result.validate = "pass"
@@ -634,7 +673,7 @@ def run_case(
 
         validate_cleanup_state(
             runner,
-            nfs_dir_should_exist=nfs_enabled or nfs_dir_preexisted,
+            nfs_dir_should_exist=config.install_nfs_provisioner or nfs_dir_preexisted,
             log_dir=case_log_dir,
         )
         result.cleanup = "pass"
@@ -649,23 +688,20 @@ def run_case(
 
 def validate_install_state(
     runner: Runner,
-    stack: Stack,
-    gpu_enabled: bool,
-    nfs_enabled: bool,
-    cuda_driver_version: str | None,
+    config: StackConfig,
     log_dir: pathlib.Path,
 ) -> None:
     wait_for_node_ready(runner, log_dir / "validate-node-ready.log")
     wait_for_calico(runner, log_dir / "validate-calico.log")
     validate_admin_kubectl(runner, log_dir / "validate-admin-kubectl.log")
 
-    if nfs_enabled:
-        validate_nfs_enabled(runner, stack, log_dir)
+    if config.install_nfs_provisioner:
+        validate_nfs_enabled(runner, config, log_dir)
     else:
         validate_nfs_disabled(runner, log_dir)
 
-    if gpu_enabled:
-        validate_gpu_enabled(runner, stack, cuda_driver_version, log_dir)
+    if config.install_gpu_operator:
+        validate_gpu_enabled(runner, config, log_dir)
     else:
         validate_gpu_disabled(runner, log_dir)
 
@@ -713,12 +749,12 @@ def validate_admin_kubectl(runner: Runner, log_path: pathlib.Path) -> None:
 
 def validate_nfs_enabled(
     runner: Runner,
-    stack: Stack,
+    config: StackConfig,
     log_dir: pathlib.Path,
 ) -> None:
     releases = helm_releases(runner, NFS_NAMESPACE, log_dir / "validate-nfs-helm.log")
     chart = find_release_chart(releases, NFS_RELEASE)
-    expected_chart = NFS_CHART_PREFIX + stack.nfs_provisioner_version
+    expected_chart = NFS_CHART_PREFIX + config.nfs_provisioner_version
     if chart != expected_chart:
         raise RuntimeError(f"NFS chart mismatch: got {chart!r}, want {expected_chart!r}")
 
@@ -820,13 +856,12 @@ def validate_nfs_disabled(runner: Runner, log_dir: pathlib.Path) -> None:
 
 def validate_gpu_enabled(
     runner: Runner,
-    stack: Stack,
-    cuda_driver_version: str | None,
+    config: StackConfig,
     log_dir: pathlib.Path,
 ) -> None:
     releases = helm_releases(runner, GPU_NAMESPACE, log_dir / "validate-gpu-helm.log")
     chart = find_release_chart(releases, GPU_RELEASE)
-    expected_chart = GPU_CHART_PREFIX + stack.gpu_operator_version
+    expected_chart = GPU_CHART_PREFIX + config.gpu_operator_version
     if chart != expected_chart:
         raise RuntimeError(f"GPU chart mismatch: got {chart!r}, want {expected_chart!r}")
 
@@ -838,7 +873,7 @@ def validate_gpu_enabled(
     )
     driver = values.get("driver", {})
     driver_version = driver.get("version") if isinstance(driver, dict) else None
-    expected_driver_version = cuda_driver_version or stack.cuda_driver_container_version
+    expected_driver_version = config.cuda_driver_container_version
     if driver_version != expected_driver_version:
         raise RuntimeError(
             "GPU driver container version mismatch: "
@@ -1172,35 +1207,36 @@ def phase_status(
     return "pass"
 
 
-def bool_string(value: bool) -> str:
-    return "true" if value else "false"
-
-
 def case_cuda_driver_label(
-    stack: Stack,
-    gpu_enabled: bool,
-    cuda_driver_version: str | None,
+    config: StackConfig,
+    overrides: dict[str, str],
 ) -> str:
-    if not gpu_enabled:
+    if not config.install_gpu_operator:
         return "-"
-    if cuda_driver_version is not None:
-        return cuda_driver_version
-    return f"stack:{stack.cuda_driver_container_version}"
+    if CUDA_DRIVER_CONTAINER_VERSION_KEY in overrides:
+        return config.cuda_driver_container_version
+    return f"stack:{config.cuda_driver_container_version}"
 
 
 def case_id(
     index: int,
     stack: str,
-    gpu_enabled: bool,
-    nfs_enabled: bool,
-    cuda_driver_version: str | None,
+    config: StackConfig,
+    overrides: dict[str, str],
 ) -> str:
-    gpu = "gpu" if gpu_enabled else "no-gpu"
-    nfs = "nfs" if nfs_enabled else "no-nfs"
+    gpu = "gpu" if config.install_gpu_operator else "no-gpu"
+    nfs = "nfs" if config.install_nfs_provisioner else "no-nfs"
     parts = [f"{index:02d}", "stack", stack, gpu, nfs]
-    if gpu_enabled:
-        driver = cuda_driver_version if cuda_driver_version is not None else "stack"
+    if config.install_gpu_operator:
+        driver = (
+            config.cuda_driver_container_version
+            if CUDA_DRIVER_CONTAINER_VERSION_KEY in overrides
+            else "stack"
+        )
         parts.extend(["driver", slug(driver)])
+    if overrides:
+        label = ",".join(f"{key}={value}" for key, value in overrides.items())
+        parts.extend(["set", slug(label)])
     return "-".join(parts)
 
 

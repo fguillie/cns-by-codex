@@ -2,7 +2,7 @@
 
 # CNS
 
-CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `containerd`, Calico, Helm, default NFS dynamic storage, and optional NVIDIA GPU Operator support. GPU Operator installs use the stack-pinned CUDA driver container version by default, and `cns.sh` can override that driver container version for a specific install. The project is built around an Ansible playbook and a thin shell wrapper:
+CNS deploys a single-node Kubernetes cluster on Ubuntu 24.04 with `kubeadm`, `containerd`, Calico, Helm, default NFS dynamic storage, and optional NVIDIA GPU Operator support. GPU Operator installs use the stack-pinned CUDA driver container version by default, and `cns.sh` can override stack parameters for a specific install. The project is built around an Ansible playbook and a thin shell wrapper:
 
 ```bash
 ./cns.sh install <stack-version>
@@ -44,12 +44,14 @@ CNS keeps one stack file per supported Kubernetes minor release branch.
 | Kubernetes | `1.36.0` | `1.35.4` | `1.34.7` | `1.33.11` |
 | Containerd | `2.3.0` | `2.3.0` | `2.3.0` | `2.3.0` |
 | Calico | `3.32.0` | `3.32.0` | `3.32.0` | `3.32.0` |
+| Install GPU Operator | `true` | `true` | `true` | `true` |
+| Install NFS provisioner | `true` | `true` | `true` | `true` |
 | GPU Operator | `v26.3.1` | `v26.3.1` | `v26.3.1` | `v26.3.1` |
 | CUDA driver container | `580.126.20` | `580.126.20` | `580.126.20` | `580.126.20` |
 | Helm | `v4.1.4` | `v4.1.4` | `v4.1.4` | `v4.1.4` |
 | NFS provisioner | `4.0.18` | `4.0.18` | `4.0.18` | `4.0.18` |
 
-The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single source of truth. The CUDA driver container row is the default `driver.version` passed to GPU Operator; use `--cuda-driver-version <version>` only when a specific install needs a different driver container.
+The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single source of truth for component versions and default install choices. The CUDA driver container row is the default `driver.version` passed to GPU Operator; use `--set cuda_driver_container_version=<version>` only when a specific install needs a different driver container.
 
 ## Prerequisites
 
@@ -65,23 +67,21 @@ The stack files under [`stacks/`](/nvidia/CODEX/CNS/stacks) are the single sourc
 
 ## cns.sh Command
 
-The `cns.sh` wrapper runs the CNS Ansible playbook with the selected action and install options.
+The `cns.sh` wrapper runs the CNS Ansible playbook with the selected action and stack parameter overrides.
 
 | Command | Option or argument | Description |
 | --- | --- | --- |
 | `./cns.sh` | None | Prints command usage, install options, and supported stack versions. |
 | `./cns.sh install <stack-version>` | `<stack-version>` | Deploys the selected CNS stack. Supported values are `1.36`, `1.35`, `1.34`, and `1.33`. |
-| `./cns.sh install <stack-version> --gpu-operator` | `--gpu-operator` | Installs the NVIDIA GPU Operator. This is the default install behavior. |
-| `./cns.sh install <stack-version> --no-gpu-operator` | `--no-gpu-operator` | Skips GPU Operator deployment, GPU Operator validation, and host CUDA/NVIDIA driver cleanup. |
-| `./cns.sh install <stack-version> --cuda-driver-version <version>` | `--cuda-driver-version <version>` | Deploys the requested GPU Operator CUDA driver container version instead of the stack default. |
-| `./cns.sh install <stack-version> --nfs-provisioner` | `--nfs-provisioner` | Installs the NFS server and `nfs-subdir-external-provisioner`. This is the default install behavior. |
-| `./cns.sh install <stack-version> --no-nfs-provisioner` | `--no-nfs-provisioner` | Skips NFS server setup, NFS export configuration, and NFS dynamic storage provisioner deployment. |
+| `./cns.sh install <stack-version> --set install_gpu_operator=false` | `--set install_gpu_operator=false` | Skips GPU Operator deployment, GPU Operator validation, and host CUDA/NVIDIA driver cleanup. |
+| `./cns.sh install <stack-version> --set cuda_driver_container_version=<version>` | `--set cuda_driver_container_version=<version>` | Deploys the requested GPU Operator CUDA driver container version instead of the stack default. |
+| `./cns.sh install <stack-version> --set install_nfs_provisioner=false` | `--set install_nfs_provisioner=false` | Skips NFS server setup, NFS export configuration, and NFS dynamic storage provisioner deployment. |
 | `./cns.sh uninstall` | None | Removes the deployed CNS stack from the target node. This command does not require a stack version. |
 | `./cns.sh help` | `help` | Prints command usage, install options, and supported stack versions. |
 | `./cns.sh -h` | `-h` | Prints command usage, install options, and supported stack versions. |
 | `./cns.sh --help` | `--help` | Prints command usage, install options, and supported stack versions. |
 
-Install options may be combined. The default install behavior is equivalent to `./cns.sh install <stack-version> --gpu-operator --nfs-provisioner` with the selected stack file's CUDA driver container version. `--cuda-driver-version` requires GPU Operator installation and cannot be combined with `--no-gpu-operator`.
+`--set` may be repeated and may override any top-level key defined in the selected stack file. The default install behavior uses the selected stack file's `install_gpu_operator`, `install_nfs_provisioner`, and `cuda_driver_container_version` values. Install toggle values must be `true` or `false`. `--set cuda_driver_container_version=<version>` requires GPU Operator installation and cannot be combined with `--set install_gpu_operator=false`.
 
 ## Quick Start
 
@@ -99,13 +99,13 @@ By default, CNS installs GPU Operator with the selected stack file's CUDA driver
 To skip GPU Operator installation and leave host GPU drivers unmanaged by CNS:
 
 ```bash
-./cns.sh install 1.36 --no-gpu-operator
+./cns.sh install 1.36 --set install_gpu_operator=false
 ```
 
 To override the stack default CUDA driver container version used by GPU Operator:
 
 ```bash
-./cns.sh install 1.36 --cuda-driver-version 580.126.20
+./cns.sh install 1.36 --set cuda_driver_container_version=580.126.20
 ```
 
 The requested version is passed to the GPU Operator Helm release as `driver.version`. If the version does not exist in NVIDIA's registry or is not compatible with the target node, GPU Operator deployment can fail during install validation.
@@ -113,7 +113,7 @@ The requested version is passed to the GPU Operator Helm release as `driver.vers
 To skip NFS server and dynamic storage provisioner setup:
 
 ```bash
-./cns.sh install 1.36 --no-nfs-provisioner
+./cns.sh install 1.36 --set install_nfs_provisioner=false
 ```
 
 To remove the deployment:
@@ -126,7 +126,7 @@ Uninstall removes the NFS provisioner release and CNS export configuration, but 
 
 ## Live Matrix Validation
 
-The live validation script under [`tests/test_cns_matrix.py`](tests/test_cns_matrix.py) automates install, idempotency, validation, uninstall, and cleanup checks across every CNS stack and every GPU Operator/NFS provisioner option combination.
+The live validation script under [`tests/test_cns_matrix.py`](tests/test_cns_matrix.py) automates install, idempotency, validation, uninstall, and cleanup checks across selected CNS stacks. Each invocation tests one effective stack configuration: the stack defaults plus any `--set` overrides.
 
 Set the target password with an environment variable so it is not committed or stored in shell scripts:
 
@@ -134,32 +134,30 @@ Set the target password with an environment variable so it is not committed or s
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
 ```
 
-By default, the script discovers all releases from `stacks/*.yml`, runs `./cns.sh uninstall` before the matrix starts, and tests both GPU Operator and NFS provisioner states. Each case runs install, immediate install rerun for idempotency, live validation, uninstall, cleanup validation, and an uninstall rerun.
+By default, the script discovers all releases from `stacks/*.yml`, runs `./cns.sh uninstall` before the matrix starts, and tests each selected stack's default parameters. Each case runs install, immediate install rerun for idempotency, live validation, uninstall, cleanup validation, and an uninstall rerun.
 
-Use `--stack` to limit releases, `--gpu enabled|disabled|both` to choose GPU Operator cases, and `--nfs enabled|disabled|both` to choose NFS provisioner cases. To run a smaller smoke test:
+Use `--stack` to limit releases and repeat `--set <key>=<value>` to override top-level parameters from the selected stack file. The matrix script uses the same stack-parameter model as `cns.sh`: unknown keys fail before remote work starts, and install toggle values must be `true` or `false`. To run a smaller smoke test without GPU Operator or NFS provisioner:
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --host 10.86.6.94 \
   --user nvidia \
   --stack 1.36 \
-  --gpu disabled \
-  --nfs disabled \
+  --set install_gpu_operator=false \
+  --set install_nfs_provisioner=false \
   --fail-fast
 ```
 
-Use `--cuda-driver-version <version>` to validate a specific GPU Operator CUDA driver container version. The option may be repeated and is valid only when GPU Operator cases are enabled. Supported matrix override values are `580.159.03`, `580.126.20`, and `595.71.05`.
+Use `--set cuda_driver_container_version=<version>` to validate a specific GPU Operator CUDA driver container version. This override requires `install_gpu_operator=true`. Run one matrix invocation per driver version or per GPU/NFS combination when validating several configurations.
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --host 10.86.9.190 \
   --user nvidia \
   --stack 1.36 \
-  --gpu enabled \
-  --nfs disabled \
-  --cuda-driver-version 580.159.03 \
-  --cuda-driver-version 580.126.20 \
-  --cuda-driver-version 595.71.05 \
+  --set install_gpu_operator=true \
+  --set install_nfs_provisioner=false \
+  --set cuda_driver_container_version=580.159.03 \
   --fail-fast
 ```
 

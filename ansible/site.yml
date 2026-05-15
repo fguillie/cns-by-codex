@@ -21,7 +21,11 @@
           - kubernetes_package_version is defined
           - containerd_version is defined
           - calico_version is defined
-        fail_msg: "Install requires a stack file from stacks/<version>.yml."
+          - install_gpu_operator is defined
+          - install_nfs_provisioner is defined
+          - install_gpu_operator | string | lower in ['true', 'false']
+          - install_nfs_provisioner | string | lower in ['true', 'false']
+        fail_msg: "Install requires a stack file from stacks/<version>.yml with valid install_gpu_operator and install_nfs_provisioner values."
       when: cns_action == 'install'
 
     - name: Validate GPU Operator stack variables for installs
@@ -29,12 +33,12 @@
         that:
           - gpu_operator_version is defined
           - helm_version is defined
-          - cuda_driver_container_version is defined or cns_cuda_driver_container_version is defined
-          - (cns_cuda_driver_container_version | default(cuda_driver_container_version | default('', true), true) | string | length) > 0
-        fail_msg: "GPU Operator install requires gpu_operator_version, helm_version, and cuda_driver_container_version in the selected stack file or CLI override."
+          - cuda_driver_container_version is defined
+          - (cuda_driver_container_version | string | length) > 0
+        fail_msg: "GPU Operator install requires gpu_operator_version, helm_version, and cuda_driver_container_version in the selected stack file."
       when:
         - cns_action == 'install'
-        - cns_gpu_operator_enabled | bool
+        - install_gpu_operator | bool
 
     - name: Validate NFS provisioner stack variables for installs
       ansible.builtin.assert:
@@ -44,7 +48,7 @@
         fail_msg: "NFS provisioner install requires nfs_subdir_external_provisioner_version and helm_version in the selected stack file."
       when:
         - cns_action == 'install'
-        - cns_nfs_provisioner_enabled | bool
+        - install_nfs_provisioner | bool
 
   tasks:
     - name: Uninstall GPU Operator first
@@ -72,7 +76,7 @@
         name: precheck
       when:
         - cns_action == 'install'
-        - cns_gpu_operator_enabled | bool
+        - install_gpu_operator | bool
 
     - name: Install Kubernetes stack
       ansible.builtin.import_role:
@@ -84,18 +88,18 @@
         name: helm_client
       when:
         - cns_action == 'install'
-        - (cns_gpu_operator_enabled | bool) or (cns_nfs_provisioner_enabled | bool)
+        - (install_gpu_operator | bool) or (install_nfs_provisioner | bool)
 
     - name: Install NFS provisioner
       ansible.builtin.import_role:
         name: nfs_provisioner
       when:
         - cns_action == 'install'
-        - cns_nfs_provisioner_enabled | bool
+        - install_nfs_provisioner | bool
 
     - name: Install GPU Operator
       ansible.builtin.import_role:
         name: gpu_operator
       when:
         - cns_action == 'install'
-        - cns_gpu_operator_enabled | bool
+        - install_gpu_operator | bool
