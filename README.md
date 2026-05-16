@@ -44,8 +44,6 @@ CNS keeps one stack file per supported Kubernetes minor release branch.
 | Kubernetes | `1.36.0` | `1.35.4` | `1.34.7` | `1.33.11` |
 | Containerd | `2.3.0` | `2.3.0` | `2.3.0` | `2.3.0` |
 | Calico | `3.32.0` | `3.32.0` | `3.32.0` | `3.32.0` |
-| Install GPU Operator | `true` | `true` | `true` | `true` |
-| Install NFS provisioner | `true` | `true` | `true` | `true` |
 | GPU Operator | `v26.3.1` | `v26.3.1` | `v26.3.1` | `v26.3.1` |
 | CUDA driver container | `580.126.20` | `580.126.20` | `580.126.20` | `580.126.20` |
 | Helm | `v4.1.4` | `v4.1.4` | `v4.1.4` | `v4.1.4` |
@@ -159,6 +157,24 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --set install_nfs_provisioner=false \
   --set cuda_driver_container_version=580.159.03 \
   --set cuda_driver_container_version=580.126.20 \
+  --fail-fast
+```
+
+To validate GPU Operator and NFS provisioner together across multiple CUDA driver container and containerd versions:
+
+```bash
+CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
+  --host 10.86.6.94 \
+  --user nvidia \
+  --stack 1.36 \
+  --set install_gpu_operator=true \
+  --set install_nfs_provisioner=true \
+  --set cuda_driver_container_version="580.126.20" \
+  --set cuda_driver_container_version="580.159.03" \
+  --set cuda_driver_container_version="595.71.05" \
+  --set containerd_version="2.3.0" \
+  --set containerd_version="2.2.3" \
+  --set containerd_version="2.1.7" \
   --fail-fast
 ```
 
