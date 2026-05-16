@@ -126,7 +126,7 @@ Uninstall removes the NFS provisioner release and CNS export configuration, but 
 
 ## Live Matrix Validation
 
-The live validation script under [`tests/test_cns_matrix.py`](tests/test_cns_matrix.py) automates install, idempotency, validation, uninstall, and cleanup checks across selected CNS stacks. Each invocation tests one effective stack configuration: the stack defaults plus any `--set` overrides.
+The live validation script under [`tests/test_cns_matrix.py`](tests/test_cns_matrix.py) automates install, idempotency, validation, uninstall, and cleanup checks across selected CNS stacks. By default, each selected stack is one case. Repeating the same `--set` key adds one case per value, and multiple repeated keys are combined as a matrix.
 
 Set the target password with an environment variable so it is not committed or stored in shell scripts:
 
@@ -136,7 +136,7 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.
 
 By default, the script discovers all releases from `stacks/*.yml`, runs `./cns.sh uninstall` before the matrix starts, and tests each selected stack's default parameters. Each case runs install, immediate install rerun for idempotency, live validation, uninstall, cleanup validation, and an uninstall rerun.
 
-Use `--stack` to limit releases and repeat `--set <key>=<value>` to override top-level parameters from the selected stack file. The matrix script uses the same stack-parameter model as `cns.sh`: unknown keys fail before remote work starts, and install toggle values must be `true` or `false`. To run a smaller smoke test without GPU Operator or NFS provisioner:
+Use `--stack` to limit releases and repeat `--set <key>=<value>` to override top-level parameters from the selected stack file. The matrix script uses the same stack-parameter model as `cns.sh`: unknown keys fail before remote work starts, and install toggle values must be `true` or `false`. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases. To run a smaller smoke test without GPU Operator or NFS provisioner:
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
@@ -148,7 +148,7 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --fail-fast
 ```
 
-Use `--set cuda_driver_container_version=<version>` to validate a specific GPU Operator CUDA driver container version. This override requires `install_gpu_operator=true`. Run one matrix invocation per driver version or per GPU/NFS combination when validating several configurations.
+Use `--set cuda_driver_container_version=<version>` to validate a specific GPU Operator CUDA driver container version. This override requires `install_gpu_operator=true`. Repeat `--set cuda_driver_container_version=<version>` to validate several driver containers in one run. Repeating another key, such as `containerd_version`, combines those values with the driver versions.
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
@@ -158,6 +158,7 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --set install_gpu_operator=true \
   --set install_nfs_provisioner=false \
   --set cuda_driver_container_version=580.159.03 \
+  --set cuda_driver_container_version=580.126.20 \
   --fail-fast
 ```
 

@@ -69,6 +69,10 @@
     path: /etc/kubernetes/admin.conf
   register: containerd_kubernetes_initialized
 
+- name: Set desired containerd config version
+  ansible.builtin.set_fact:
+    containerd_config_version: "{{ '4' if containerd_version is version('2.3.0', '>=') else '3' }}"
+
 - name: Inspect current containerd config
   ansible.builtin.stat:
     path: /etc/containerd/config.toml
@@ -86,7 +90,7 @@
       {{
         not containerd_kubernetes_initialized.stat.exists
         or not containerd_config_file.stat.exists
-        or 'version = 4' not in (containerd_config_current.content | default('') | b64decode)
+        or ('version = ' ~ containerd_config_version) not in (containerd_config_current.content | default('') | b64decode)
       }}
 
 - name: Create systemd unit directory for containerd

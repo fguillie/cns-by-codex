@@ -1,7 +1,7 @@
 # Renders the containerd configuration used by Kubernetes and GPU Operator.
 imports = ["/etc/containerd/conf.d/*.toml"]
 
-version = 4
+version = {{ containerd_config_version }}
 
 [plugins]
   [plugins."io.containerd.cri.v1.images"]

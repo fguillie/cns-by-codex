@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import pathlib
@@ -245,8 +246,8 @@ def main() -> int:
         return 2
 
     stacks = select_stacks(discover_stacks(repo_root), args.stack)
-    overrides = parse_set_overrides(args.set_overrides)
-    cases = build_cases(stacks, overrides)
+    override_sets = parse_set_overrides(args.set_overrides)
+    cases = build_cases(stacks, override_sets)
     log_dir = make_log_dir(args.log_dir)
 
     with tempfile.TemporaryDirectory(prefix="cns-inventory-") as inventory_dir:
@@ -267,7 +268,7 @@ def main() -> int:
         print(f"Repository: {repo_root}")
         print(f"Target: {args.user}@{args.host}")
         print(f"Stacks: {', '.join(stack.version for stack in stacks)}")
-        print(f"Stack overrides: {format_stack_overrides(overrides)}")
+        print(f"Stack overrides: {format_stack_overrides(override_sets)}")
         print(f"Logs: {log_dir}")
         print()
 
@@ -327,7 +328,7 @@ def main() -> int:
 
 def parse_args(repo_root: pathlib.Path) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the live CNS release and option validation matrix.",
+        description="Run the live CNS release and stack-parameter validation matrix.",
     )
     parser.add_argument("--repo-root", type=pathlib.Path, default=repo_root)
     parser.add_argument("--host", default=DEFAULT_HOST)
@@ -349,7 +350,10 @@ def parse_args(repo_root: pathlib.Path) -> argparse.Namespace:
         metavar="KEY=VALUE",
         action="append",
         default=[],
-        help="Override a top-level key defined in each selected stack file.",
+        help=(
+            "Override a top-level key defined in each selected stack file. "
+            "Repeat the same key to test multiple values."
+        ),
     )
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument(
@@ -462,8 +466,8 @@ def parse_stack_bool(value: str, key: str, path: pathlib.Path) -> bool:
     raise SystemExit(f"{path} has invalid {key}: {value!r}; expected true or false.")
 
 
-def parse_set_overrides(values: list[str]) -> dict[str, str]:
-    overrides: dict[str, str] = {}
+def parse_set_overrides(values: list[str]) -> dict[str, list[str]]:
+    overrides: dict[str, list[str]] = {}
     for item in values:
         if "=" not in item:
             raise SystemExit(f"Invalid --set value: {item}. Expected key=value.")
@@ -478,7 +482,9 @@ def parse_set_overrides(values: list[str]) -> dict[str, str]:
             raise SystemExit(
                 f"Invalid value for {key}: {value!r}; expected true or false."
             )
-        overrides[key] = value
+        overrides.setdefault(key, [])
+        if value not in overrides[key]:
+            overrides[key].append(value)
     return overrides
 
 
@@ -552,19 +558,29 @@ def select_stacks(stacks: list[Stack], requested: list[str]) -> list[Stack]:
 
 def build_cases(
     stacks: list[Stack],
-    overrides: dict[str, str],
+    override_sets: dict[str, list[str]],
 ) -> list[tuple[Stack, dict[str, str]]]:
     cases = []
+    keys = list(override_sets)
+    values = [override_sets[key] for key in keys]
     for stack in stacks:
-        validate_stack_overrides(stack, overrides)
-        cases.append((stack, dict(overrides)))
+        if not keys:
+            validate_stack_overrides(stack, {})
+            cases.append((stack, {}))
+            continue
+        for selected_values in itertools.product(*values):
+            overrides = dict(zip(keys, selected_values, strict=True))
+            validate_stack_overrides(stack, overrides)
+            cases.append((stack, overrides))
     return cases
 
 
-def format_stack_overrides(overrides: dict[str, str]) -> str:
-    if not overrides:
+def format_stack_overrides(override_sets: dict[str, list[str]]) -> str:
+    if not override_sets:
         return "none"
-    return ", ".join(f"{key}={value}" for key, value in overrides.items())
+    return ", ".join(
+        f"{key}={','.join(values)}" for key, values in override_sets.items()
+    )
 
 
 def make_log_dir(requested: pathlib.Path | None) -> pathlib.Path:

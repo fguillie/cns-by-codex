@@ -35,7 +35,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - [`ansible/roles/nfs_provisioner`](/nvidia/CODEX/CNS/ansible/roles/nfs_provisioner/tasks/main.yml:1): NFS server export and `nfs-subdir-external-provisioner` deployment
 - [`ansible/roles/gpu_operator`](/nvidia/CODEX/CNS/ansible/roles/gpu_operator/tasks/main.yml:1): GPU Operator deployment
 - [`ansible/inventory/hosts.ini`](/nvidia/CODEX/CNS/ansible/inventory/hosts.ini:1): user-edited target inventory
-- [`tests/test_cns_matrix.py`](/nvidia/CODEX/CNS/tests/test_cns_matrix.py:1): live CNS release and option validation matrix
+- [`tests/test_cns_matrix.py`](/nvidia/CODEX/CNS/tests/test_cns_matrix.py:1): live CNS release and stack-parameter validation matrix
 - [`docs/`](/nvidia/CODEX/CNS/docs/usage.md:1): user documentation
 
 ## Change Rules
@@ -62,8 +62,9 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
   - `imports = ["/etc/containerd/conf.d/*.toml"]` in `/etc/containerd/config.toml`
   - `operator.defaultRuntime=containerd` in the Helm install path
 - Preserve `driver.kernelModuleType=proprietary` and the CNS GPU Operator kernel module config unless GPU Operator is revalidated on a live host. Driver containers `580.159.03` and `595.71.05` required `NVreg_EnableGpuFirmware=0` on the QA host because the open kernel module path failed when GSP firmware files were unavailable.
-- Containerd `2.3.0` requires a root config with `version = 4`; a v2 root config breaks GPU Operator generated v4 drop-ins.
-- On already initialized nodes with a v4 containerd config, do not rewrite `/etc/containerd/config.toml`; GPU Operator may have added runtime settings that must survive steady-state reruns.
+- Containerd `2.3.0` and later requires a root config with `version = 4`; a v2 root config breaks GPU Operator generated v4 drop-ins.
+- CNS uses a root config with `version = 3` for containerd versions before `2.3.0`; `2.2.3` cannot read a v4 config.
+- On already initialized nodes with the desired containerd config version, do not rewrite `/etc/containerd/config.toml`; GPU Operator may have added runtime settings that must survive steady-state reruns.
 - Do not remove the shared `helm_client` role unless GPU Operator and NFS provisioner Helm lifecycle ordering is revalidated. Helm must remain available until both Helm-backed components have been removed during uninstall.
 - Keep artifact downloads tolerant of transient upstream slowness by using `cns_download_timeout` and retries for `get_url` tasks.
 
@@ -133,13 +134,13 @@ ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml 
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=uninstall
 ```
 
-The live matrix script can automate the remote QA install, rerun, validation, uninstall, and cleanup checks. It discovers supported releases from `stacks/*.yml`, creates a temporary inventory instead of editing `ansible/inventory/hosts.ini`, runs `./cns.sh uninstall` before the matrix by default, and expects the target password from `CNS_TEST_PASSWORD` or `--password`.
+The live matrix script can automate the remote QA install, rerun, validation, uninstall, and cleanup checks. It discovers supported releases from `stacks/*.yml`, creates a temporary inventory instead of editing `ansible/inventory/hosts.ini`, runs `./cns.sh uninstall` before the matrix by default, and expects the target password from `CNS_TEST_PASSWORD` or `--password`. By default, each selected stack is one case. Repeating the same `--set` key adds one case per value, and multiple repeated keys are combined as a matrix.
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
 ```
 
-Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, or `cuda_driver_container_version`. Use `--fail-fast` when iterating on a failure. Run one matrix invocation per CUDA driver container version when validating several values.
+Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, `cuda_driver_container_version`, or `containerd_version`. Use `--fail-fast` when iterating on a failure. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases.
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
@@ -149,6 +150,9 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --set install_gpu_operator=true \
   --set install_nfs_provisioner=false \
   --set cuda_driver_container_version=580.159.03 \
+  --set cuda_driver_container_version=580.126.20 \
+  --set containerd_version=2.3.0 \
+  --set containerd_version=2.2.3 \
   --fail-fast
 ```
 
@@ -224,6 +228,14 @@ The CUDA driver override matrix was validated against `10.86.9.190` on May 13, 2
 - GPU-enabled paths confirmed chart `gpu-operator-v26.3.1`, requested `driver.version`, `driver.kernelModuleType=proprietary`, CNS `driver.kernelModuleConfig.name`, `ClusterPolicy` ready, and `nvidia.com/gpu` allocatable
 - final host state after validation: uninstalled with `/run/nvidia`, `/usr/local/nvidia`, `/var/run/cdi`, and `/etc/containerd/conf.d/99-nvidia.toml` absent
 
+The repeated `--set` stack parameter matrix was validated against `10.86.6.94` on May 16, 2026:
+
+- stack `1.36`
+- `install_gpu_operator=true` and `install_nfs_provisioner=true`
+- all combinations of `cuda_driver_container_version=580.126.20|580.159.03` and `containerd_version=2.3.0|2.2.3`
+- install, immediate install rerun, validation, uninstall, uninstall rerun, and cleanup checks passed for all four cases
+- final host state after validation: uninstalled, `containerd` inactive, `kubelet` inactive, no `/etc/kubernetes/admin.conf`, CNS NFS export removed, and `/srv/cns/nfs` preserved
+
 ## Idempotency Expectations
 
 - An install rerun on an already deployed stack should converge cleanly.
@@ -242,7 +254,7 @@ The CUDA driver override matrix was validated against `10.86.9.190` on May 13, 2
 ## Git
 
 - Default branch is `main`.
-- Current feature branch for CNS stack `26.5.0` work is `26.5.0`.
-- The `26.5.0` branch is published as `origin/26.5.0`.
+- Current feature branch for CNS stack `26.5.1` work is `26.5.1`.
+- The `26.5.1` branch is published as `origin/26.5.1`.
 - Keep commits focused and non-interactive.
 - Do not rewrite history unless explicitly requested.
