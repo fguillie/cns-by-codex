@@ -56,6 +56,7 @@ class Stack:
 class StackConfig:
     install_gpu_operator: bool
     install_nfs_provisioner: bool
+    containerd_version: str
     gpu_operator_version: str
     cuda_driver_container_version: str
     nfs_provisioner_version: str
@@ -73,8 +74,9 @@ class CommandResult:
 @dataclass
 class CaseResult:
     stack: str
-    gpu_enabled: bool
+    gpu_operator_version: str
     nfs_enabled: bool
+    containerd_version: str
     cuda_driver_version: str
     install: str = "skip"
     rerun: str = "skip"
@@ -281,8 +283,9 @@ def main() -> int:
                     [
                         CaseResult(
                             stack="-",
-                            gpu_enabled=False,
+                            gpu_operator_version="-",
                             nfs_enabled=False,
+                            containerd_version="-",
                             cuda_driver_version="-",
                             cleanup="fail",
                             reason="pre-clean uninstall failed",
@@ -527,6 +530,7 @@ def effective_stack_config(stack: Stack, overrides: dict[str, str]) -> StackConf
             INSTALL_NFS_PROVISIONER_KEY,
             stack.path,
         ),
+        containerd_version=require_key(values, "containerd_version", stack.path),
         gpu_operator_version=require_key(values, "gpu_operator_version", stack.path),
         cuda_driver_container_version=require_key(
             values,
@@ -622,8 +626,9 @@ def run_case(
     config = effective_stack_config(stack, overrides)
     result = CaseResult(
         stack=stack.version,
-        gpu_enabled=config.install_gpu_operator,
+        gpu_operator_version=case_gpu_operator_label(config),
         nfs_enabled=config.install_nfs_provisioner,
+        containerd_version=config.containerd_version,
         cuda_driver_version=case_cuda_driver_label(
             config,
             overrides,
@@ -1234,6 +1239,12 @@ def case_cuda_driver_label(
     return f"stack:{config.cuda_driver_container_version}"
 
 
+def case_gpu_operator_label(config: StackConfig) -> str:
+    if not config.install_gpu_operator:
+        return "-"
+    return config.gpu_operator_version
+
+
 def case_id(
     index: int,
     stack: str,
@@ -1263,9 +1274,10 @@ def slug(value: str) -> str:
 def print_table(results: list[CaseResult]) -> None:
     headers = [
         "STACK",
-        "GPU",
+        "GPU_OPERATOR",
         "CUDA_DRIVER",
-        "NFS",
+        "NFS_LOCAL_PROVISIONER",
+        "CONTAINERD",
         "INSTALL",
         "RERUN",
         "VALIDATE",
@@ -1278,9 +1290,10 @@ def print_table(results: list[CaseResult]) -> None:
     rows = [
         [
             result.stack,
-            "on" if result.gpu_enabled else "off",
+            result.gpu_operator_version,
             result.cuda_driver_version,
             "on" if result.nfs_enabled else "off",
+            result.containerd_version,
             result.install,
             result.rerun,
             result.validate,
