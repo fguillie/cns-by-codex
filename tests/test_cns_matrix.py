@@ -75,7 +75,7 @@ class CommandResult:
 class CaseResult:
     stack: str
     gpu_operator_version: str
-    nfs_enabled: bool
+    nfs_provisioner_version: str
     containerd_version: str
     cuda_driver_version: str
     install: str = "skip"
@@ -284,7 +284,7 @@ def main() -> int:
                         CaseResult(
                             stack="-",
                             gpu_operator_version="-",
-                            nfs_enabled=False,
+                            nfs_provisioner_version="-",
                             containerd_version="-",
                             cuda_driver_version="-",
                             cleanup="fail",
@@ -627,7 +627,7 @@ def run_case(
     result = CaseResult(
         stack=stack.version,
         gpu_operator_version=case_gpu_operator_label(config),
-        nfs_enabled=config.install_nfs_provisioner,
+        nfs_provisioner_version=case_nfs_provisioner_label(config),
         containerd_version=config.containerd_version,
         cuda_driver_version=case_cuda_driver_label(
             config,
@@ -1245,6 +1245,12 @@ def case_gpu_operator_label(config: StackConfig) -> str:
     return config.gpu_operator_version
 
 
+def case_nfs_provisioner_label(config: StackConfig) -> str:
+    if not config.install_nfs_provisioner:
+        return "-"
+    return config.nfs_provisioner_version
+
+
 def case_id(
     index: int,
     stack: str,
@@ -1292,7 +1298,7 @@ def print_table(results: list[CaseResult]) -> None:
             result.stack,
             result.gpu_operator_version,
             result.cuda_driver_version,
-            "on" if result.nfs_enabled else "off",
+            result.nfs_provisioner_version,
             result.containerd_version,
             result.install,
             result.rerun,

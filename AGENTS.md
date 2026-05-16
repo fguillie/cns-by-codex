@@ -140,7 +140,7 @@ The live matrix script can automate the remote QA install, rerun, validation, un
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
 ```
 
-Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, `cuda_driver_container_version`, or `containerd_version`. Use `--fail-fast` when iterating on a failure. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases. The result table reports the effective GPU Operator version, CUDA driver container version, NFS provisioner enablement, and containerd version for each case.
+Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, `cuda_driver_container_version`, or `containerd_version`. Use `--fail-fast` when iterating on a failure. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases. The result table reports the effective GPU Operator version, CUDA driver container version, NFS provisioner version, and containerd version for each case.
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
