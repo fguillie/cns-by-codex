@@ -6,6 +6,8 @@
 
 - Verify the host IP, user, and password in `ansible/inventory/hosts.ini`.
 - Install `sshpass` on the control node if you use `ansible_password`.
+- Use `./cns.sh` for installs and uninstalls so Ansible loads the repository `ansible/ansible.cfg`, which disables host key checking for password-based SSH.
+- If running `ansible-playbook` directly with password-based SSH, set `ANSIBLE_CONFIG=ansible/ansible.cfg` or add the target host key to `~/.ssh/known_hosts`.
 
 ## Kubernetes Packages Not Found
 

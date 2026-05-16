@@ -5,9 +5,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANSIBLE_DIR="${SCRIPT_DIR}/ansible"
+ANSIBLE_CONFIG_FILE="${ANSIBLE_DIR}/ansible.cfg"
 INVENTORY_FILE="${ANSIBLE_DIR}/inventory/hosts.ini"
 PLAYBOOK_FILE="${ANSIBLE_DIR}/site.yml"
 STACKS_DIR="${SCRIPT_DIR}/stacks"
+
+export ANSIBLE_CONFIG="${ANSIBLE_CONFIG_FILE}"
 
 print_help() {
   cat <<'EOF'
@@ -108,6 +111,7 @@ run_install() {
 
   stack_file="${STACKS_DIR}/${stack_version}.yml"
 
+  require_file "${ANSIBLE_CONFIG_FILE}"
   require_file "${stack_file}"
   require_file "${INVENTORY_FILE}"
   require_file "${PLAYBOOK_FILE}"
@@ -195,6 +199,7 @@ run_install() {
 }
 
 run_uninstall() {
+  require_file "${ANSIBLE_CONFIG_FILE}"
   require_file "${INVENTORY_FILE}"
   require_file "${PLAYBOOK_FILE}"
 

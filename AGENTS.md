@@ -79,6 +79,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 ## Install Flow
 
 - `./cns.sh install <stack-version>` sets `cns_action=install`, loads the selected stack file, and uses the stack file's `install_gpu_operator` and `install_nfs_provisioner` defaults.
+- `cns.sh` exports `ANSIBLE_CONFIG=ansible/ansible.cfg` so password-based SSH uses the repository host-key-checking setting.
 - `./cns.sh install <stack-version> --set install_gpu_operator=true` is the explicit default-enabled GPU Operator form.
 - `./cns.sh install <stack-version> --set install_gpu_operator=false` skips GPU Operator validation, skips the `precheck` role, and skips the `gpu_operator` role.
 - `./cns.sh install <stack-version> --set cuda_driver_container_version=<version>` overrides the selected stack file's `cuda_driver_container_version` for that install.

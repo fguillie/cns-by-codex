@@ -60,7 +60,7 @@ To skip NFS server and dynamic storage provisioner setup:
 You can bypass the shell wrapper if needed:
 
 ```bash
-ansible-playbook -i ansible/inventory/hosts.ini ansible/site.yml \
+ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook -i ansible/inventory/hosts.ini ansible/site.yml \
   -e cns_action=install \
   -e cns_stack_version=1.36 \
   -e @stacks/1.36.yml
