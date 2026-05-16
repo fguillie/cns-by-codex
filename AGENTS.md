@@ -140,19 +140,21 @@ The live matrix script can automate the remote QA install, rerun, validation, un
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
 ```
 
-Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, `cuda_driver_container_version`, or `containerd_version`. Use `--fail-fast` when iterating on a failure. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases.
+Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, `cuda_driver_container_version`, or `containerd_version`. Use `--fail-fast` when iterating on a failure. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases. The result table reports the effective GPU Operator version, CUDA driver container version, NFS provisioner enablement, and containerd version for each case.
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
-  --host 10.86.9.190 \
+  --host 10.86.6.94 \
   --user nvidia \
   --stack 1.36 \
   --set install_gpu_operator=true \
-  --set install_nfs_provisioner=false \
-  --set cuda_driver_container_version=580.159.03 \
-  --set cuda_driver_container_version=580.126.20 \
-  --set containerd_version=2.3.0 \
-  --set containerd_version=2.2.3 \
+  --set install_nfs_provisioner=true \
+  --set cuda_driver_container_version="580.126.20" \
+  --set cuda_driver_container_version="580.159.03" \
+  --set cuda_driver_container_version="595.71.05" \
+  --set containerd_version="2.3.0" \
+  --set containerd_version="2.2.3" \
+  --set containerd_version="2.1.7" \
   --fail-fast
 ```
 
