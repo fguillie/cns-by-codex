@@ -16,7 +16,6 @@
       ansible.builtin.assert:
         that:
           - cns_stack_version is defined
-          - kubernetes_series is defined
           - kubernetes_version is defined
           - kubernetes_package_version is defined
           - containerd_version is defined

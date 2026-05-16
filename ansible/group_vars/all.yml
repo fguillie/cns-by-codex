@@ -15,8 +15,9 @@ kubernetes_packages:
   - "kubeadm={{ kubernetes_package_version }}"
   - "kubectl={{ kubernetes_package_version }}"
 
-kubernetes_apt_key_url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_series }}/deb/Release.key"
-kubernetes_apt_repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_series }}/deb/ /"
+kubernetes_apt_series: "{{ kubernetes_version | regex_replace('^([0-9]+\\.[0-9]+).*$', '\\1') }}"
+kubernetes_apt_key_url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_apt_series }}/deb/Release.key"
+kubernetes_apt_repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_apt_series }}/deb/ /"
 
 containerd_archive_url: "https://github.com/containerd/containerd/releases/download/v{{ containerd_version }}/containerd-{{ containerd_version }}-linux-amd64.tar.gz"
 containerd_archive_path: "/tmp/containerd-{{ containerd_version }}-linux-amd64.tar.gz"
