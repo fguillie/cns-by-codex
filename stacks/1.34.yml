@@ -1,14 +1,26 @@
 ---
 # Pins component versions for the Kubernetes 1.34 CNS stack.
+
+# Stack identity: identifies this CNS release stack and Kubernetes minor branch.
 cns_stack_version: "1.34"
 kubernetes_series: "1.34"
+
+# Kubernetes core: pins the control plane, node packages, runtime, and CNI.
 kubernetes_version: "1.34.7"
 kubernetes_package_version: "1.34.7-1.1"
 containerd_version: "2.3.0"
 calico_version: "3.32.0"
+
+# Optional components: sets the default install choices for add-on roles.
 install_gpu_operator: "true"
 install_nfs_provisioner: "true"
+
+# GPU Operator: pins the NVIDIA operator chart and CUDA driver container.
 gpu_operator_version: "v26.3.1"
 cuda_driver_container_version: "580.126.20"
+
+# Helm client: pins the Helm binary used by Helm-backed roles.
 helm_version: "v4.1.4"
+
+# NFS provisioner: pins the external provisioner chart for default storage.
 nfs_subdir_external_provisioner_version: "4.0.18"
