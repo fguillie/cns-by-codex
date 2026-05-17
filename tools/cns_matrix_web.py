@@ -44,11 +44,17 @@ class MatrixDashboardHandler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/view-log?"):
             self.handle_view_log()
             return
+        if self.path.startswith("/view-json?"):
+            self.handle_view_json()
+            return
         super().do_GET()
 
     def do_HEAD(self) -> None:
         if self.path.startswith("/view-log?"):
             self.handle_view_log(head_only=True)
+            return
+        if self.path.startswith("/view-json?"):
+            self.handle_view_json(head_only=True)
             return
         super().do_HEAD()
 
@@ -170,6 +176,65 @@ class MatrixDashboardHandler(http.server.SimpleHTTPRequestHandler):
         if not head_only:
             self.wfile.write(encoded)
 
+    def handle_view_json(self, *, head_only: bool = False) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(parsed.query)
+        requested = query.get("path", [""])[0]
+        json_path = safe_json_path(self.base_dir / "www", requested)
+        if json_path is None:
+            self.send_error(404, "json not found")
+            return
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+            content = json.dumps(data, indent=2, sort_keys=True)
+        except (OSError, json.JSONDecodeError):
+            self.send_error(404, "json not found")
+            return
+
+        title = html.escape(requested)
+        body = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title}</title>
+  <style>
+    body {{
+      margin: 0;
+      background: #111820;
+      color: #e9eef5;
+      font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }}
+    header {{
+      position: sticky;
+      top: 0;
+      background: #1d2733;
+      border-bottom: 1px solid #354252;
+      padding: 10px 14px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    pre {{
+      margin: 0;
+      padding: 14px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }}
+  </style>
+</head>
+<body>
+  <header>{title}</header>
+  <pre>{html.escape(content)}</pre>
+</body>
+</html>
+"""
+        encoded = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("content-type", "text/html; charset=utf-8")
+        self.send_header("content-length", str(len(encoded)))
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(encoded)
+
     def read_json_payload(self) -> dict[str, Any]:
         length = int(self.headers.get("content-length", "0") or "0")
         if length <= 0:
@@ -242,6 +307,21 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
 def safe_log_path(web_dir: pathlib.Path, requested: str) -> pathlib.Path | None:
     decoded = urllib.parse.unquote(requested).lstrip("/")
     if not decoded.startswith("runs/") or not decoded.endswith(".log"):
+        return None
+    candidate = (web_dir / decoded).resolve()
+    runs_root = (web_dir / "runs").resolve()
+    try:
+        candidate.relative_to(runs_root)
+    except ValueError:
+        return None
+    if not candidate.is_file():
+        return None
+    return candidate
+
+
+def safe_json_path(web_dir: pathlib.Path, requested: str) -> pathlib.Path | None:
+    decoded = urllib.parse.unquote(requested).lstrip("/")
+    if not decoded.startswith("runs/") or not decoded.endswith(".json"):
         return None
     candidate = (web_dir / decoded).resolve()
     runs_root = (web_dir / "runs").resolve()

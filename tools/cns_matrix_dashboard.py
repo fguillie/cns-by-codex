@@ -484,7 +484,7 @@ def hero_section(run: dict[str, Any], generated_at: str) -> str:
     overrides = str(run.get("stack_overrides_label") or "none")
     progress = progress_percent(run)
     matrix_log = log_view_link("matrix.log", f"runs/{url_escape(run_id)}/matrix.log")
-    summary_json = link("summary.json", f"runs/{url_escape(run_id)}/summary.json")
+    summary_json = json_view_link("summary.json", f"runs/{url_escape(run_id)}/summary.json")
     return f"""
 <section>
   <div class="badge {status}">{html.escape(status)}</div>
@@ -979,7 +979,7 @@ def recent_runs_table(runs: list[dict[str, Any]], current: dict[str, Any]) -> st
         )
         rows.append(
             "<tr>"
-            f"<td>{link(run_id, f'runs/{url_escape(run_id)}/summary.json')}</td>"
+            f"<td>{json_view_link(run_id, f'runs/{url_escape(run_id)}/summary.json')}</td>"
             f"<td>{status_pill(run.get('status'))}</td>"
             f"<td>{html.escape(str(run.get('cases_completed', 0)))} / {html.escape(str(run.get('cases_total', 0)))}</td>"
             f"<td>{html.escape(str(run.get('passed_cases', 0)))}</td>"
@@ -1114,6 +1114,12 @@ def link_new_tab(label: str, href: str) -> str:
 
 def log_view_link(label: str, href: str) -> str:
     viewer_href = f"/view-log?path={html.escape(href, quote=True)}"
+    escaped_label = html.escape(label)
+    return f'<a href="{viewer_href}" target="_blank" rel="noopener noreferrer">{escaped_label}</a>'
+
+
+def json_view_link(label: str, href: str) -> str:
+    viewer_href = f"/view-json?path={html.escape(href, quote=True)}"
     escaped_label = html.escape(label)
     return f'<a href="{viewer_href}" target="_blank" rel="noopener noreferrer">{escaped_label}</a>'
 
