@@ -1,4 +1,4 @@
-# Serves the CNS matrix static dashboard on port 8888.
+# Serves the CNS matrix dashboard and control API on port 8888.
 [Unit]
 Description=CNS matrix dashboard web server
 After=network.target
@@ -8,7 +8,7 @@ Type=simple
 User=__SERVICE_USER__
 Group=__SERVICE_GROUP__
 WorkingDirectory=/var/lib/cns-matrix/www
-ExecStart=/usr/bin/python3 -m http.server 8888 --bind 0.0.0.0 --directory /var/lib/cns-matrix/www
+ExecStart=/usr/bin/python3 __REPO_ROOT__/tools/cns_matrix_web.py --repo-root __REPO_ROOT__ --base-dir /var/lib/cns-matrix --bind 0.0.0.0 --port 8888
 Restart=always
 RestartSec=3
 

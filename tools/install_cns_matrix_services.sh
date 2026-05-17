@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SYSTEMD_DIR="${REPO_ROOT}/packaging/systemd"
 RUNTIME_DIR="/var/lib/cns-matrix"
 ENV_FILE="/etc/cns-matrix.env"
+SUDOERS_FILE="/etc/sudoers.d/cns-matrix-web"
 START_MATRIX="false"
 
 usage() {
@@ -99,6 +100,20 @@ render_unit() {
   rm -f "${rendered}"
 }
 
+install_sudoers_rule() {
+  local rendered
+  rendered="$(mktemp)"
+  {
+    printf '# Allows the CNS dashboard to start and stop only the CNS matrix service.\n'
+    printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block cns-matrix.service\n' "${SERVICE_USER}"
+    printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl stop cns-matrix.service\n' "${SERVICE_USER}"
+    printf '%s ALL=(root) NOPASSWD: %s/tools/set_cns_matrix_args.sh *\n' "${SERVICE_USER}" "${REPO_ROOT}"
+  } > "${rendered}"
+  "${SUDO[@]}" visudo -cf "${rendered}" >/dev/null
+  "${SUDO[@]}" install -o root -g root -m 0440 "${rendered}" "${SUDOERS_FILE}"
+  rm -f "${rendered}"
+}
+
 create_env_file() {
   if [[ -f "${ENV_FILE}" ]]; then
     return
@@ -129,6 +144,7 @@ for path in "${RUNTIME_DIR}" "${RUNTIME_DIR}/runs" "${RUNTIME_DIR}/state" "${RUN
 done
 
 create_env_file
+install_sudoers_rule
 render_unit "${SYSTEMD_DIR}/cns-matrix.service.in" /etc/systemd/system/cns-matrix.service
 render_unit "${SYSTEMD_DIR}/cns-matrix-web.service.in" /etc/systemd/system/cns-matrix-web.service
 
@@ -137,7 +153,8 @@ render_unit "${SYSTEMD_DIR}/cns-matrix-web.service.in" /etc/systemd/system/cns-m
   --base-dir "${RUNTIME_DIR}"
 
 "${SUDO[@]}" systemctl daemon-reload
-"${SUDO[@]}" systemctl enable --now cns-matrix-web.service
+"${SUDO[@]}" systemctl enable cns-matrix-web.service >/dev/null
+"${SUDO[@]}" systemctl restart cns-matrix-web.service
 
 if [[ "${START_MATRIX}" == "true" ]]; then
   "${SUDO[@]}" systemctl start --no-block cns-matrix.service

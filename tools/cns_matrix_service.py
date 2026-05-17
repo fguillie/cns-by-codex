@@ -30,7 +30,42 @@ def main() -> int:
 
     host = os.environ.get("CNS_MATRIX_HOST", DEFAULT_HOST)
     user = os.environ.get("CNS_MATRIX_USER", DEFAULT_USER)
-    extra_args = shlex.split(os.environ.get("CNS_MATRIX_ARGS", ""))
+    first_request = pop_queue_request(runtime["queue_json"])
+    if first_request is None:
+        first_request = {
+            "id": "manual",
+            "args": shlex.split(os.environ.get("CNS_MATRIX_ARGS", "")),
+            "args_text": os.environ.get("CNS_MATRIX_ARGS", ""),
+            "source": "environment",
+        }
+
+    rc = 0
+    request: dict[str, Any] | None = first_request
+    while request is not None:
+        rc = run_matrix_request(
+            repo_root=repo_root,
+            base_dir=base_dir,
+            runtime=runtime,
+            host=host,
+            user=user,
+            request=request,
+        )
+        if rc == 130:
+            break
+        request = pop_queue_request(runtime["queue_json"])
+    return rc
+
+
+def run_matrix_request(
+    *,
+    repo_root: pathlib.Path,
+    base_dir: pathlib.Path,
+    runtime: dict[str, pathlib.Path],
+    host: str,
+    user: str,
+    request: dict[str, Any],
+) -> int:
+    extra_args = [str(item) for item in request.get("args", [])]
     run_id = utc_stamp()
     run_dir = runtime["runs_dir"] / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -72,6 +107,7 @@ def main() -> int:
         },
         "repo_root": str(repo_root),
         "extra_args": extra_args,
+        "queue_request": request,
     }
     write_json_atomic(runtime["current_json"], state)
     write_json_atomic(run_dir / "service.json", state)
@@ -126,7 +162,26 @@ def prepare_runtime(base_dir: pathlib.Path) -> dict[str, pathlib.Path]:
         "state_dir": state_dir,
         "web_dir": web_dir,
         "current_json": state_dir / "current.json",
+        "queue_json": state_dir / "queue.json",
     }
+
+
+def pop_queue_request(path: pathlib.Path) -> dict[str, Any] | None:
+    queue = read_queue(path)
+    if not queue:
+        return None
+    request = queue.pop(0)
+    write_json_atomic(path, {"schema_version": 1, "items": queue})
+    return request
+
+
+def read_queue(path: pathlib.Path) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return []
+    items = data.get("items", []) if isinstance(data, dict) else []
+    return [item for item in items if isinstance(item, dict)]
 
 
 def run_matrix(
