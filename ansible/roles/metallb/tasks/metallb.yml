@@ -1,0 +1,181 @@
+---
+# Deploys MetalLB with Helm and configures the CNS Layer 2 address pool.
+- name: Ensure MetalLB namespace exists
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - create
+      - namespace
+      - "{{ metallb_namespace }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_namespace_create
+  failed_when: metallb_namespace_create.rc != 0 and 'AlreadyExists' not in metallb_namespace_create.stderr
+  changed_when: metallb_namespace_create.rc == 0
+
+- name: Label MetalLB namespace for privileged PSA
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - label
+      - namespace
+      - "{{ metallb_namespace }}"
+      - pod-security.kubernetes.io/enforce=privileged
+      - pod-security.kubernetes.io/audit=privileged
+      - pod-security.kubernetes.io/warn=privileged
+      - --overwrite
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: Check configured Helm repositories
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - repo
+      - list
+  register: metallb_helm_repo_list
+  changed_when: false
+
+- name: Inspect current MetalLB release
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - list
+      - --namespace
+      - "{{ metallb_namespace }}"
+      - -o
+      - json
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_release_list
+  changed_when: false
+
+- name: Set current MetalLB release state
+  ansible.builtin.set_fact:
+    metallb_current_release: "{{ ((metallb_release_list.stdout | from_json) | selectattr('name', 'equalto', metallb_release_name) | list | first) | default({}, true) }}"
+
+- name: Inspect current MetalLB values
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - get
+      - values
+      - "{{ metallb_release_name }}"
+      - --namespace
+      - "{{ metallb_namespace }}"
+      - --all
+      - -o
+      - json
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_release_values
+  failed_when: false
+  changed_when: false
+  when: metallb_current_release | length > 0
+
+- name: Set current MetalLB speaker values
+  ansible.builtin.set_fact:
+    metallb_current_speaker_values: "{{ (metallb_release_values.stdout | default('{}', true) | from_json | default({}, true)).get('speaker', {}) }}"
+  when: metallb_current_release | length > 0
+
+- name: Add MetalLB Helm repository
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - repo
+      - add
+      - "{{ metallb_repo_name }}"
+      - "{{ metallb_repo_url }}"
+  register: metallb_helm_repo_add
+  failed_when: metallb_helm_repo_add.rc != 0
+  changed_when: metallb_helm_repo_add.rc == 0
+  when: metallb_repo_url not in metallb_helm_repo_list.stdout
+
+- name: Update Helm repositories
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - repo
+      - update
+  changed_when: false
+
+- name: Install or upgrade MetalLB
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - upgrade
+      - --install
+      - "{{ metallb_release_name }}"
+      - "{{ metallb_chart }}"
+      - --namespace
+      - "{{ metallb_namespace }}"
+      - --version={{ metallb_version }}
+      - --set
+      - speaker.ignoreExcludeLB=true
+      - --wait
+      - --timeout=10m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_install
+  changed_when: true
+  when: >
+    (metallb_current_release | length) == 0 or
+    metallb_current_release.get('status', '') != 'deployed' or
+    metallb_current_release.get('chart', '') != ('metallb-' ~ metallb_version) or
+    not ((metallb_current_speaker_values | default({})).get('ignoreExcludeLB', false) | bool)
+
+- name: Wait for MetalLB controller rollout
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - -n
+      - "{{ metallb_namespace }}"
+      - rollout
+      - status
+      - deployment/{{ metallb_release_name }}-controller
+      - --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: Wait for MetalLB speaker rollout
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - -n
+      - "{{ metallb_namespace }}"
+      - rollout
+      - status
+      - daemonset/{{ metallb_release_name }}-speaker
+      - --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: Configure MetalLB Layer 2 address pool
+  ansible.builtin.shell:
+    cmd: |
+      kubectl apply -f - <<'EOF'
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: {{ metallb_ip_address_pool_name }}
+        namespace: {{ metallb_namespace }}
+      spec:
+        addresses:
+          - {{ metallb_load_balancer_ip_range | to_json }}
+      ---
+      apiVersion: metallb.io/v1beta1
+      kind: L2Advertisement
+      metadata:
+        name: {{ metallb_l2_advertisement_name }}
+        namespace: {{ metallb_namespace }}
+      spec:
+        ipAddressPools:
+          - {{ metallb_ip_address_pool_name }}
+      EOF
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_config_apply
+  changed_when: metallb_config_apply.stdout is search('created|configured')

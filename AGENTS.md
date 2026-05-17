@@ -9,8 +9,9 @@ This repository builds and tests CNS, a single-node Kubernetes deployment for Ub
 - `kubeadm`
 - `containerd`
 - Calico
-- Helm when GPU Operator or NFS provisioner is enabled
+- Helm when GPU Operator, NFS provisioner, or MetalLB is enabled
 - NFS server and `nfs-subdir-external-provisioner`, enabled by default and optional at install time
+- MetalLB, enabled by default and optional at install time
 - NVIDIA GPU Operator, enabled by default and optional at install time
 
 The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps the Ansible playbook under [`ansible/`](/nvidia/CODEX/CNS/ansible/site.yml:1).
@@ -20,10 +21,11 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Stack definitions live only in [`stacks/`](/nvidia/CODEX/CNS/stacks/1.36.yml:1).
 - One file exists per supported Kubernetes minor branch.
 - Do not hardcode component versions in the roles or shell wrapper when they belong in a stack file.
-- Stack files also define default install choices with `install_gpu_operator` and `install_nfs_provisioner`.
+- Stack files also define default install choices with `install_gpu_operator`, `install_nfs_provisioner`, and `install_metallb`.
 - The currently pinned GPU Operator line is `v26.3.1`.
 - The currently pinned CUDA driver container line is `580.126.20`.
 - The currently pinned `nfs-subdir-external-provisioner` chart line is `4.0.18`.
+- The currently pinned MetalLB chart line is `0.15.3`.
 
 ## Repo Structure
 
@@ -33,6 +35,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - [`ansible/roles/kubernetes`](/nvidia/CODEX/CNS/ansible/roles/kubernetes/tasks/main.yml:1): host prep, containerd, Kubernetes, Calico
 - [`ansible/roles/helm_client`](/nvidia/CODEX/CNS/ansible/roles/helm_client/tasks/main.yml:1): Helm client install and removal for Helm-backed roles
 - [`ansible/roles/nfs_provisioner`](/nvidia/CODEX/CNS/ansible/roles/nfs_provisioner/tasks/main.yml:1): NFS server export and `nfs-subdir-external-provisioner` deployment
+- [`ansible/roles/metallb`](/nvidia/CODEX/CNS/ansible/roles/metallb/tasks/main.yml:1): MetalLB deployment and Layer 2 address pool configuration
 - [`ansible/roles/gpu_operator`](/nvidia/CODEX/CNS/ansible/roles/gpu_operator/tasks/main.yml:1): GPU Operator deployment
 - [`ansible/inventory/hosts.ini`](/nvidia/CODEX/CNS/ansible/inventory/hosts.ini:1): user-edited target inventory
 - [`tests/test_cns_matrix.py`](/nvidia/CODEX/CNS/tests/test_cns_matrix.py:1): live CNS release and stack-parameter validation matrix
@@ -41,7 +44,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 ## Change Rules
 
 - Preserve Ubuntu 24.04 as the supported OS unless the project scope changes explicitly.
-- Preserve the split between the `kubernetes`, `helm_client`, `nfs_provisioner`, and `gpu_operator` roles.
+- Preserve the split between the `kubernetes`, `helm_client`, `nfs_provisioner`, `metallb`, and `gpu_operator` roles.
 - Keep `cns.sh uninstall` runnable without requiring a stack file.
 - Prefer reproducible pinned versions over dynamic `latest` lookups at runtime.
 - Do not add hidden version logic outside the stack manifests.
@@ -54,6 +57,9 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Keep NFS provisioner enabled by default unless the user explicitly requests otherwise.
 - Expose NFS provisioner opt-out only as an install-time stack parameter override, not as a separate stack manifest.
 - Keep the NFS provisioner chart version in stack files, not in role logic.
+- Keep MetalLB enabled by default unless the user explicitly requests otherwise.
+- Expose MetalLB opt-out only as an install-time stack parameter override, not as a separate stack manifest.
+- Keep the MetalLB chart version and load-balancer IP range in stack files, not in role logic.
 - Preserve `/srv/cns/nfs` data on uninstall unless the user explicitly requests destructive cleanup.
 - Keep install-time driver cleanup in the `precheck` role, before Kubernetes and GPU Operator roles, and run it only when GPU Operator installation is enabled.
 - Do not rely on `ansible_user_dir` to locate the selected admin user's home when `become` is active; resolve `cns_admin_user` through the target passwd database.
@@ -65,7 +71,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Containerd `2.3.0` and later requires a root config with `version = 4`; a v2 root config breaks GPU Operator generated v4 drop-ins.
 - CNS uses a root config with `version = 3` for containerd versions before `2.3.0`; `2.2.3` cannot read a v4 config.
 - On already initialized nodes with the desired containerd config version, do not rewrite `/etc/containerd/config.toml`; GPU Operator may have added runtime settings that must survive steady-state reruns.
-- Do not remove the shared `helm_client` role unless GPU Operator and NFS provisioner Helm lifecycle ordering is revalidated. Helm must remain available until both Helm-backed components have been removed during uninstall.
+- Do not remove the shared `helm_client` role unless GPU Operator, NFS provisioner, and MetalLB Helm lifecycle ordering is revalidated. Helm must remain available until all Helm-backed components have been removed during uninstall.
 - Keep artifact downloads tolerant of transient upstream slowness by using `cns_download_timeout` and retries for `get_url` tasks.
 
 ## File Headers
@@ -78,7 +84,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 
 ## Install Flow
 
-- `./cns.sh install <stack-version>` sets `cns_action=install`, loads the selected stack file, and uses the stack file's `install_gpu_operator` and `install_nfs_provisioner` defaults.
+- `./cns.sh install <stack-version>` sets `cns_action=install`, loads the selected stack file, and uses the stack file's `install_gpu_operator`, `install_nfs_provisioner`, and `install_metallb` defaults.
 - `cns.sh` exports `ANSIBLE_CONFIG=ansible/ansible.cfg` so password-based SSH uses the repository host-key-checking setting.
 - `./cns.sh install <stack-version> --set install_gpu_operator=true` is the explicit default-enabled GPU Operator form.
 - `./cns.sh install <stack-version> --set install_gpu_operator=false` skips GPU Operator validation, skips the `precheck` role, and skips the `gpu_operator` role.
@@ -86,11 +92,15 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - `./cns.sh install <stack-version> --set cuda_driver_container_version=<version>` requires GPU Operator installation and must fail before Ansible when combined with `--set install_gpu_operator=false`.
 - `./cns.sh install <stack-version> --set install_nfs_provisioner=true` is the explicit default-enabled NFS provisioner form.
 - `./cns.sh install <stack-version> --set install_nfs_provisioner=false` skips NFS server setup and skips the `nfs_provisioner` role.
+- `./cns.sh install <stack-version> --set install_metallb=true` is the explicit default-enabled MetalLB form.
+- `./cns.sh install <stack-version> --set install_metallb=false` skips MetalLB deployment and load-balancer address pool configuration.
+- `./cns.sh install <stack-version> --set metallb_load_balancer_ip_range=<range>` overrides the selected stack file's MetalLB address pool for that install.
 - `./cns.sh install <stack-version> --set <key>=<value>` may override only top-level keys present in the selected stack file.
-- `install_gpu_operator` and `install_nfs_provisioner` override values must be `true` or `false`.
+- `install_gpu_operator`, `install_nfs_provisioner`, and `install_metallb` override values must be `true` or `false`.
 - The playbook validates the action and stack variables first.
 - The playbook validates `gpu_operator_version`, `cuda_driver_container_version`, and `helm_version` only when GPU Operator is enabled.
 - The playbook validates `nfs_subdir_external_provisioner_version` and `helm_version` only when NFS provisioner is enabled.
+- The playbook validates `metallb_version`, `metallb_load_balancer_ip_range`, and `helm_version` only when MetalLB is enabled.
 - The `precheck` role runs only when `cns_action == 'install' and install_gpu_operator | bool`.
 - The `precheck` role runs before the `kubernetes`, `nfs_provisioner`, and `gpu_operator` roles.
 - The `precheck` role is not launched by `./cns.sh uninstall`.
@@ -102,8 +112,10 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - The `kubernetes` role resolves `cns_admin_home` from `getent passwd <cns_admin_user>` before install or uninstall tasks.
 - The `helm_client` role runs after Kubernetes install and before any enabled Helm-backed component.
 - The `nfs_provisioner` role installs `nfs-kernel-server`, exports `/srv/cns/nfs`, deploys the `nfs-subdir-external-provisioner` Helm release, and creates the default `nfs-client` StorageClass.
-- Uninstall removes GPU Operator first, then NFS provisioner, then Helm, then Kubernetes.
+- The `metallb` role installs MetalLB, creates the CNS `IPAddressPool`, and creates the CNS `L2Advertisement`.
+- Uninstall removes GPU Operator first, then NFS provisioner, then MetalLB, then Helm, then Kubernetes.
 - NFS uninstall removes the Helm release, namespace, StorageClass, and CNS export config, but preserves `/srv/cns/nfs`.
+- MetalLB uninstall removes the Helm release and namespace.
 
 ## Kubeconfig Handling
 
@@ -130,7 +142,8 @@ ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml 
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_gpu_operator=false
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_nfs_provisioner=false
-ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_gpu_operator=false -e install_nfs_provisioner=false
+ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_metallb=false
+ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_gpu_operator=false -e install_nfs_provisioner=false -e install_metallb=false
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e cuda_driver_container_version=580.126.20
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=uninstall
 ```
@@ -141,7 +154,7 @@ The live matrix script can automate the remote QA install, rerun, validation, un
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
 ```
 
-Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, `cuda_driver_container_version`, or `containerd_version`. Use `--fail-fast` when iterating on a failure. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases. The result table reports the effective GPU Operator version, CUDA driver container version, NFS provisioner version, and containerd version for each case.
+Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, `install_metallb`, `cuda_driver_container_version`, `metallb_load_balancer_ip_range`, or `containerd_version`. Use `--fail-fast` when iterating on a failure. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases. The result table reports the effective GPU Operator version, CUDA driver container version, NFS provisioner version, MetalLB version, MetalLB IP range, and containerd version for each case.
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
@@ -150,6 +163,7 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --stack 1.36 \
   --set install_gpu_operator=true \
   --set install_nfs_provisioner=true \
+  --set install_metallb=true \
   --set cuda_driver_container_version="580.126.20" \
   --set cuda_driver_container_version="580.159.03" \
   --set cuda_driver_container_version="595.71.05" \
@@ -161,14 +175,14 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
 
 If full remote QA is requested and credentials are available, use the target inventory and validate:
 
-1. `install --set install_gpu_operator=false --set install_nfs_provisioner=false`
+1. `install --set install_gpu_operator=false --set install_nfs_provisioner=false --set install_metallb=false`
 2. immediate rerun for idempotency
 3. validation and `uninstall`
-4. `install --set install_gpu_operator=false --set install_nfs_provisioner=true`
+4. `install --set install_gpu_operator=false --set install_nfs_provisioner=true --set install_metallb=true`
 5. immediate rerun, validation, and `uninstall`
-6. `install --set install_gpu_operator=true --set install_nfs_provisioner=false`
+6. `install --set install_gpu_operator=true --set install_nfs_provisioner=false --set install_metallb=true`
 7. immediate rerun, validation, and `uninstall`
-8. `install --set install_gpu_operator=true --set install_nfs_provisioner=true`
+8. `install --set install_gpu_operator=true --set install_nfs_provisioner=true --set install_metallb=true`
 9. immediate rerun, validation, `uninstall`, and immediate uninstall rerun for partially-clean uninstall idempotency
 
 For live install validation with GPU Operator disabled, confirm:
@@ -191,6 +205,18 @@ For live install validation with NFS provisioner disabled, confirm:
 
 - the `nfs-provisioner` namespace is absent
 - the `nfs-client` StorageClass is absent
+
+For live install validation with MetalLB enabled, confirm:
+
+- the MetalLB Helm release is deployed at the pinned chart version
+- the MetalLB Helm release values include `speaker.ignoreExcludeLB=true`
+- the CNS `IPAddressPool` exists with the effective load-balancer IP range
+- the CNS `L2Advertisement` exists
+- a temporary `LoadBalancer` Service receives an external IP from the effective range
+
+For live install validation with MetalLB disabled, confirm:
+
+- the `metallb-system` namespace is absent
 
 For live install validation with GPU Operator enabled, confirm:
 
@@ -252,6 +278,9 @@ The repeated `--set` stack parameter matrix was validated against `10.86.6.94` o
 - Changing `cuda_driver_container_version` on a GPU-enabled install rerun should trigger a Helm upgrade so the requested `driver.version` is applied.
 - For the validated NFS provisioner toggle paths, steady-state reruns for each stack and option should complete with `changed=0`.
 - NFS provisioner reruns must not reinstall or upgrade the Helm release when the deployed chart version already matches the selected stack.
+- MetalLB reruns must not reinstall or upgrade the Helm release when the deployed chart version already matches the selected stack.
+- MetalLB reruns must not reconfigure the Layer 2 resources when the deployed address pool already matches the selected stack or install-time override.
+- Changing `metallb_load_balancer_ip_range` on a MetalLB-enabled install rerun should update the CNS `IPAddressPool`.
 - Uninstall reruns should complete with `changed=0` after CNS has already been removed.
 
 ## Git

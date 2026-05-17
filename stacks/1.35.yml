@@ -13,6 +13,7 @@ calico_version: "3.32.0"
 # Optional components: sets the default install choices for add-on roles.
 install_gpu_operator: "true"
 install_nfs_provisioner: "true"
+install_metallb: "true"
 
 # GPU Operator: pins the NVIDIA operator chart and CUDA driver container.
 gpu_operator_version: "v26.3.1"
@@ -23,3 +24,7 @@ helm_version: "v4.1.4"
 
 # NFS provisioner: pins the external provisioner chart for default storage.
 nfs_subdir_external_provisioner_version: "4.0.18"
+
+# MetalLB: pins the load balancer chart and address pool.
+metallb_version: "0.15.3"
+metallb_load_balancer_ip_range: "10.86.6.94/32"

@@ -69,3 +69,11 @@ nfs_provisioner_default_class: true
 nfs_provisioner_packages:
   - nfs-kernel-server
   - nfs-common
+
+metallb_namespace: metallb-system
+metallb_release_name: metallb
+metallb_repo_name: metallb
+metallb_repo_url: https://metallb.github.io/metallb
+metallb_chart: metallb/metallb
+metallb_ip_address_pool_name: cns-load-balancer-pool
+metallb_l2_advertisement_name: cns-l2-advertisement

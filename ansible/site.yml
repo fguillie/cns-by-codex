@@ -22,9 +22,11 @@
           - calico_version is defined
           - install_gpu_operator is defined
           - install_nfs_provisioner is defined
+          - install_metallb is defined
           - install_gpu_operator | string | lower in ['true', 'false']
           - install_nfs_provisioner | string | lower in ['true', 'false']
-        fail_msg: "Install requires a stack file from stacks/<version>.yml with valid install_gpu_operator and install_nfs_provisioner values."
+          - install_metallb | string | lower in ['true', 'false']
+        fail_msg: "Install requires a stack file from stacks/<version>.yml with valid install_gpu_operator, install_nfs_provisioner, and install_metallb values."
       when: cns_action == 'install'
 
     - name: Validate GPU Operator stack variables for installs
@@ -49,6 +51,18 @@
         - cns_action == 'install'
         - install_nfs_provisioner | bool
 
+    - name: Validate MetalLB stack variables for installs
+      ansible.builtin.assert:
+        that:
+          - metallb_version is defined
+          - metallb_load_balancer_ip_range is defined
+          - (metallb_load_balancer_ip_range | string | length) > 0
+          - helm_version is defined
+        fail_msg: "MetalLB install requires metallb_version, metallb_load_balancer_ip_range, and helm_version in the selected stack file."
+      when:
+        - cns_action == 'install'
+        - install_metallb | bool
+
   tasks:
     - name: Uninstall GPU Operator first
       ansible.builtin.import_role:
@@ -58,6 +72,11 @@
     - name: Uninstall NFS provisioner
       ansible.builtin.import_role:
         name: nfs_provisioner
+      when: cns_action == 'uninstall'
+
+    - name: Uninstall MetalLB
+      ansible.builtin.import_role:
+        name: metallb
       when: cns_action == 'uninstall'
 
     - name: Remove Helm client
@@ -87,7 +106,7 @@
         name: helm_client
       when:
         - cns_action == 'install'
-        - (install_gpu_operator | bool) or (install_nfs_provisioner | bool)
+        - (install_gpu_operator | bool) or (install_nfs_provisioner | bool) or (install_metallb | bool)
 
     - name: Install NFS provisioner
       ansible.builtin.import_role:
@@ -95,6 +114,13 @@
       when:
         - cns_action == 'install'
         - install_nfs_provisioner | bool
+
+    - name: Install MetalLB
+      ansible.builtin.import_role:
+        name: metallb
+      when:
+        - cns_action == 'install'
+        - install_metallb | bool
 
     - name: Install GPU Operator
       ansible.builtin.import_role:

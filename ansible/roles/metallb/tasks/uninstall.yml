@@ -1,0 +1,79 @@
+---
+# Removes MetalLB Kubernetes resources when Kubernetes is available.
+- name: Check for Kubernetes admin kubeconfig
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: metallb_kubeconfig
+
+- name: Check for Helm binary
+  ansible.builtin.stat:
+    path: "{{ helm_binary_path }}"
+  register: metallb_helm_binary
+
+- name: Inspect current MetalLB release
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - list
+      - --namespace
+      - "{{ metallb_namespace }}"
+      - -o
+      - json
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_release_list
+  failed_when: false
+  changed_when: false
+  when:
+    - metallb_kubeconfig.stat.exists
+    - metallb_helm_binary.stat.exists
+
+- name: Uninstall MetalLB release
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - uninstall
+      - "{{ metallb_release_name }}"
+      - --namespace
+      - "{{ metallb_namespace }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_uninstall
+  failed_when: false
+  changed_when: metallb_uninstall.rc == 0 and 'uninstalled' in metallb_uninstall.stdout
+  when:
+    - metallb_kubeconfig.stat.exists
+    - metallb_helm_binary.stat.exists
+    - metallb_release_list.stdout is search('"name":"' ~ metallb_release_name ~ '"')
+
+- name: Remove MetalLB namespace
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - delete
+      - namespace
+      - "{{ metallb_namespace }}"
+      - --ignore-not-found=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_ns_delete
+  failed_when: false
+  changed_when: "'deleted' in metallb_ns_delete.stdout"
+  when: metallb_kubeconfig.stat.exists
+
+- name: Wait for MetalLB namespace removal
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - wait
+      - --for=delete
+      - namespace/{{ metallb_namespace }}
+      - --timeout=5m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_ns_wait
+  failed_when: false
+  changed_when: false
+  when:
+    - metallb_kubeconfig.stat.exists
+    - "'deleted' in metallb_ns_delete.stdout"

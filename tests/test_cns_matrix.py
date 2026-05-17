@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import itertools
 import json
 import os
@@ -27,12 +28,22 @@ DEFAULT_WAIT_INTERVAL = 10
 CUDA_DRIVER_CONTAINER_VERSION_KEY = "cuda_driver_container_version"
 INSTALL_GPU_OPERATOR_KEY = "install_gpu_operator"
 INSTALL_NFS_PROVISIONER_KEY = "install_nfs_provisioner"
-STACK_BOOL_KEYS = frozenset((INSTALL_GPU_OPERATOR_KEY, INSTALL_NFS_PROVISIONER_KEY))
+INSTALL_METALLB_KEY = "install_metallb"
+STACK_BOOL_KEYS = frozenset(
+    (INSTALL_GPU_OPERATOR_KEY, INSTALL_NFS_PROVISIONER_KEY, INSTALL_METALLB_KEY)
+)
 KUBECONFIG = "/etc/kubernetes/admin.conf"
 NFS_NAMESPACE = "nfs-provisioner"
 NFS_RELEASE = "nfs-subdir-external-provisioner"
 NFS_STORAGE_CLASS = "nfs-client"
 NFS_CHART_PREFIX = "nfs-subdir-external-provisioner-"
+METALLB_NAMESPACE = "metallb-system"
+METALLB_RELEASE = "metallb"
+METALLB_CHART_PREFIX = "metallb-"
+METALLB_IP_ADDRESS_POOL = "cns-load-balancer-pool"
+METALLB_L2_ADVERTISEMENT = "cns-l2-advertisement"
+METALLB_TEST_NAMESPACE = "cns-test-metallb"
+METALLB_TEST_SERVICE = "cns-test-load-balancer"
 GPU_NAMESPACE = "gpu-operator"
 GPU_RELEASE = "gpu-operator"
 GPU_CHART_PREFIX = "gpu-operator-"
@@ -50,16 +61,21 @@ class Stack:
     gpu_operator_version: str
     cuda_driver_container_version: str
     nfs_provisioner_version: str
+    metallb_version: str
+    metallb_load_balancer_ip_range: str
 
 
 @dataclass(frozen=True)
 class StackConfig:
     install_gpu_operator: bool
     install_nfs_provisioner: bool
+    install_metallb: bool
     containerd_version: str
     gpu_operator_version: str
     cuda_driver_container_version: str
     nfs_provisioner_version: str
+    metallb_version: str
+    metallb_load_balancer_ip_range: str
 
 
 @dataclass
@@ -76,6 +92,8 @@ class CaseResult:
     stack: str
     gpu_operator_version: str
     nfs_provisioner_version: str
+    metallb_version: str
+    metallb_ip_range: str
     containerd_version: str
     cuda_driver_version: str
     install: str = "skip"
@@ -285,6 +303,8 @@ def main() -> int:
                             stack="-",
                             gpu_operator_version="-",
                             nfs_provisioner_version="-",
+                            metallb_version="-",
+                            metallb_ip_range="-",
                             containerd_version="-",
                             cuda_driver_version="-",
                             cleanup="fail",
@@ -411,11 +431,18 @@ def discover_stacks(repo_root: pathlib.Path) -> list[Stack]:
             INSTALL_NFS_PROVISIONER_KEY,
             path,
         )
+        parse_stack_bool(
+            require_key(data, INSTALL_METALLB_KEY, path),
+            INSTALL_METALLB_KEY,
+            path,
+        )
         nfs_version = require_key(
             data,
             "nfs_subdir_external_provisioner_version",
             path,
         )
+        metallb_version = require_key(data, "metallb_version", path)
+        metallb_ip_range = require_key(data, "metallb_load_balancer_ip_range", path)
         stacks.append(
             Stack(
                 version=version,
@@ -424,6 +451,8 @@ def discover_stacks(repo_root: pathlib.Path) -> list[Stack]:
                 gpu_operator_version=gpu_version,
                 cuda_driver_container_version=cuda_driver_version,
                 nfs_provisioner_version=nfs_version,
+                metallb_version=metallb_version,
+                metallb_load_balancer_ip_range=metallb_ip_range,
             )
         )
     if not stacks:
@@ -530,6 +559,11 @@ def effective_stack_config(stack: Stack, overrides: dict[str, str]) -> StackConf
             INSTALL_NFS_PROVISIONER_KEY,
             stack.path,
         ),
+        install_metallb=parse_stack_bool(
+            require_key(values, INSTALL_METALLB_KEY, stack.path),
+            INSTALL_METALLB_KEY,
+            stack.path,
+        ),
         containerd_version=require_key(values, "containerd_version", stack.path),
         gpu_operator_version=require_key(values, "gpu_operator_version", stack.path),
         cuda_driver_container_version=require_key(
@@ -540,6 +574,12 @@ def effective_stack_config(stack: Stack, overrides: dict[str, str]) -> StackConf
         nfs_provisioner_version=require_key(
             values,
             "nfs_subdir_external_provisioner_version",
+            stack.path,
+        ),
+        metallb_version=require_key(values, "metallb_version", stack.path),
+        metallb_load_balancer_ip_range=require_key(
+            values,
+            "metallb_load_balancer_ip_range",
             stack.path,
         ),
     )
@@ -628,6 +668,8 @@ def run_case(
         stack=stack.version,
         gpu_operator_version=case_gpu_operator_label(config),
         nfs_provisioner_version=case_nfs_provisioner_label(config),
+        metallb_version=case_metallb_label(config),
+        metallb_ip_range=case_metallb_ip_range_label(config, overrides),
         containerd_version=config.containerd_version,
         cuda_driver_version=case_cuda_driver_label(
             config,
@@ -720,6 +762,11 @@ def validate_install_state(
         validate_nfs_enabled(runner, config, log_dir)
     else:
         validate_nfs_disabled(runner, log_dir)
+
+    if config.install_metallb:
+        validate_metallb_enabled(runner, config, log_dir)
+    else:
+        validate_metallb_disabled(runner, log_dir)
 
     if config.install_gpu_operator:
         validate_gpu_enabled(runner, config, log_dir)
@@ -872,6 +919,164 @@ def validate_nfs_disabled(runner: Runner, log_dir: pathlib.Path) -> None:
     if storage_class.rc == 0:
         raise RuntimeError(
             f"{NFS_STORAGE_CLASS} StorageClass exists while NFS is disabled"
+        )
+
+
+def validate_metallb_enabled(
+    runner: Runner,
+    config: StackConfig,
+    log_dir: pathlib.Path,
+) -> None:
+    releases = helm_releases(
+        runner,
+        METALLB_NAMESPACE,
+        log_dir / "validate-metallb-helm.log",
+    )
+    chart = find_release_chart(releases, METALLB_RELEASE)
+    expected_chart = METALLB_CHART_PREFIX + config.metallb_version
+    if chart != expected_chart:
+        raise RuntimeError(
+            f"MetalLB chart mismatch: got {chart!r}, want {expected_chart!r}"
+        )
+
+    values = helm_release_values(
+        runner,
+        METALLB_RELEASE,
+        METALLB_NAMESPACE,
+        log_dir / "validate-metallb-helm-values.log",
+    )
+    speaker = values.get("speaker", {})
+    ignore_exclude_lb = (
+        speaker.get("ignoreExcludeLB") if isinstance(speaker, dict) else None
+    )
+    if ignore_exclude_lb is not True:
+        raise RuntimeError(
+            "MetalLB speaker.ignoreExcludeLB mismatch: "
+            f"got {ignore_exclude_lb!r}, want True"
+        )
+
+    pool = kubectl_json(
+        runner,
+        f"-n {METALLB_NAMESPACE} get ipaddresspools.metallb.io "
+        f"{METALLB_IP_ADDRESS_POOL} -o json",
+        log_dir / "validate-metallb-ipaddresspool.log",
+    )
+    addresses = pool.get("spec", {}).get("addresses", [])
+    if not isinstance(addresses, list):
+        raise RuntimeError("MetalLB IPAddressPool addresses were not a list")
+    if config.metallb_load_balancer_ip_range not in addresses:
+        raise RuntimeError(
+            "MetalLB IPAddressPool range mismatch: "
+            f"got {addresses!r}, want {config.metallb_load_balancer_ip_range!r}"
+        )
+
+    advertisement = kubectl_json(
+        runner,
+        f"-n {METALLB_NAMESPACE} get l2advertisements.metallb.io "
+        f"{METALLB_L2_ADVERTISEMENT} -o json",
+        log_dir / "validate-metallb-l2advertisement.log",
+    )
+    advertised_pools = advertisement.get("spec", {}).get("ipAddressPools", [])
+    if (
+        not isinstance(advertised_pools, list)
+        or METALLB_IP_ADDRESS_POOL not in advertised_pools
+    ):
+        raise RuntimeError(
+            "MetalLB L2Advertisement does not reference "
+            f"{METALLB_IP_ADDRESS_POOL}"
+        )
+
+    validate_metallb_service_ip(runner, config, log_dir)
+
+
+def validate_metallb_service_ip(
+    runner: Runner,
+    config: StackConfig,
+    log_dir: pathlib.Path,
+) -> None:
+    manifest = f"""
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {METALLB_TEST_NAMESPACE}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {METALLB_TEST_SERVICE}
+  namespace: {METALLB_TEST_NAMESPACE}
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+"""
+    apply_command = (
+        f"cat <<'EOF' | kubectl --kubeconfig {KUBECONFIG} apply -f -\n"
+        f"{manifest.strip()}\n"
+        "EOF"
+    )
+    cleanup_command = (
+        f"kubectl --kubeconfig {KUBECONFIG} delete namespace "
+        f"{METALLB_TEST_NAMESPACE} --ignore-not-found=true"
+    )
+    try:
+        applied = runner.ssh(
+            apply_command,
+            sudo=True,
+            log_path=log_dir / "validate-metallb-service-apply.log",
+        )
+        if applied.rc != 0:
+            raise RuntimeError(
+                f"test LoadBalancer Service apply failed; see {applied.log_path}"
+            )
+
+        wait_command = (
+            f"kubectl --kubeconfig {KUBECONFIG} -n {METALLB_TEST_NAMESPACE} "
+            f"get service {METALLB_TEST_SERVICE} -o json"
+        )
+        assigned = runner.wait_for(
+            "test LoadBalancer external IP",
+            wait_command,
+            lambda result: result.rc == 0
+            and bool(service_external_ips(result.stdout)),
+            sudo=True,
+            timeout=240,
+            log_path=log_dir / "validate-metallb-service-ip.log",
+        )
+        external_ips = service_external_ips(assigned.stdout)
+        if not external_ips:
+            raise RuntimeError("test LoadBalancer Service did not receive an IP")
+        if not any(
+            ip_in_configured_range(
+                ip,
+                config.metallb_load_balancer_ip_range,
+            )
+            for ip in external_ips
+        ):
+            raise RuntimeError(
+                "test LoadBalancer external IP is outside the MetalLB range: "
+                f"got {external_ips!r}, want {config.metallb_load_balancer_ip_range!r}"
+            )
+    finally:
+        runner.ssh(
+            cleanup_command,
+            sudo=True,
+            log_path=log_dir / "validate-metallb-service-cleanup.log",
+            timeout=300,
+        )
+
+
+def validate_metallb_disabled(runner: Runner, log_dir: pathlib.Path) -> None:
+    namespace = runner.ssh(
+        f"kubectl --kubeconfig {KUBECONFIG} get namespace {METALLB_NAMESPACE}",
+        sudo=True,
+        log_path=log_dir / "validate-metallb-disabled-namespace.log",
+    )
+    if namespace.rc == 0:
+        raise RuntimeError(
+            f"{METALLB_NAMESPACE} namespace exists while MetalLB is disabled"
         )
 
 
@@ -1092,6 +1297,39 @@ def json_status_phase(stdout: str) -> str:
     return phase if isinstance(phase, str) else ""
 
 
+def service_external_ips(stdout: str) -> list[str]:
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError:
+        return []
+    status = data.get("status", {}) if isinstance(data, dict) else {}
+    load_balancer = status.get("loadBalancer", {}) if isinstance(status, dict) else {}
+    ingress = load_balancer.get("ingress", []) if isinstance(load_balancer, dict) else []
+    if not isinstance(ingress, list):
+        return []
+    ips = []
+    for item in ingress:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("ip")
+        if isinstance(value, str) and value:
+            ips.append(value)
+    return ips
+
+
+def ip_in_configured_range(ip_value: str, configured_range: str) -> bool:
+    ip = ipaddress.ip_address(ip_value)
+    if "-" in configured_range:
+        start_value, end_value = configured_range.split("-", 1)
+        start = ipaddress.ip_address(start_value.strip())
+        end = ipaddress.ip_address(end_value.strip())
+        return start.version == ip.version and start <= ip <= end
+    if "/" in configured_range:
+        network = ipaddress.ip_network(configured_range, strict=False)
+        return ip in network
+    return ip == ipaddress.ip_address(configured_range)
+
+
 def cluster_policy_ready(stdout: str) -> bool:
     try:
         data = json.loads(stdout)
@@ -1251,6 +1489,23 @@ def case_nfs_provisioner_label(config: StackConfig) -> str:
     return config.nfs_provisioner_version
 
 
+def case_metallb_label(config: StackConfig) -> str:
+    if not config.install_metallb:
+        return "-"
+    return config.metallb_version
+
+
+def case_metallb_ip_range_label(
+    config: StackConfig,
+    overrides: dict[str, str],
+) -> str:
+    if not config.install_metallb:
+        return "-"
+    if "metallb_load_balancer_ip_range" in overrides:
+        return config.metallb_load_balancer_ip_range
+    return f"stack:{config.metallb_load_balancer_ip_range}"
+
+
 def case_id(
     index: int,
     stack: str,
@@ -1259,7 +1514,8 @@ def case_id(
 ) -> str:
     gpu = "gpu" if config.install_gpu_operator else "no-gpu"
     nfs = "nfs" if config.install_nfs_provisioner else "no-nfs"
-    parts = [f"{index:02d}", "stack", stack, gpu, nfs]
+    metallb = "metallb" if config.install_metallb else "no-metallb"
+    parts = [f"{index:02d}", "stack", stack, gpu, nfs, metallb]
     if config.install_gpu_operator:
         driver = (
             config.cuda_driver_container_version
@@ -1283,6 +1539,8 @@ def print_table(results: list[CaseResult]) -> None:
         "GPU_OPERATOR",
         "CUDA_DRIVER",
         "NFS_LOCAL_PROVISIONER",
+        "METALLB",
+        "METALLB_RANGE",
         "CONTAINERD",
         "INSTALL",
         "RERUN",
@@ -1299,6 +1557,8 @@ def print_table(results: list[CaseResult]) -> None:
             result.gpu_operator_version,
             result.cuda_driver_version,
             result.nfs_provisioner_version,
+            result.metallb_version,
+            result.metallb_ip_range,
             result.containerd_version,
             result.install,
             result.rerun,

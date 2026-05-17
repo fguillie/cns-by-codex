@@ -30,6 +30,8 @@ Install options:
 Examples:
   ./cns.sh install 1.36 --set install_gpu_operator=false
   ./cns.sh install 1.36 --set install_nfs_provisioner=false
+  ./cns.sh install 1.36 --set install_metallb=false
+  ./cns.sh install 1.36 --set metallb_load_balancer_ip_range=10.86.6.94/32
   ./cns.sh install 1.36 --set cuda_driver_container_version=580.126.20
 
 Available stack versions:
@@ -40,7 +42,7 @@ Available stack versions:
 
 Notes:
   - Override keys must exist as top-level keys in the selected stack file.
-  - install_gpu_operator and install_nfs_provisioner values must be true or false.
+  - install_gpu_operator, install_nfs_provisioner, and install_metallb values must be true or false.
   - Edit ansible/inventory/hosts.ini before running the playbook.
   - Password-based SSH requires sshpass on the control machine.
 EOF
@@ -148,7 +150,7 @@ run_install() {
           print_help
           exit 1
         fi
-        if [[ "${set_key}" =~ ^install_(gpu_operator|nfs_provisioner)$ && ! "${set_value,,}" =~ ^(true|false)$ ]]; then
+        if [[ "${set_key}" =~ ^install_(gpu_operator|nfs_provisioner|metallb)$ && ! "${set_value,,}" =~ ^(true|false)$ ]]; then
           printf 'Invalid value for %s: %s\nExpected true or false.\n\n' "${set_key}" "${set_value}" >&2
           print_help
           exit 1

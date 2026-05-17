@@ -1,0 +1,4 @@
+---
+# Runs the MetalLB install task sequence.
+- name: Deploy MetalLB
+  ansible.builtin.include_tasks: metallb.yml
