@@ -265,6 +265,12 @@ The repeated `--set` stack parameter matrix was validated against `10.86.6.94` o
 - install, immediate install rerun, validation, uninstall, uninstall rerun, and cleanup checks passed for all four cases
 - final host state after validation: uninstalled, `containerd` inactive, `kubelet` inactive, no `/etc/kubernetes/admin.conf`, CNS NFS export removed, and `/srv/cns/nfs` preserved
 
+The MetalLB stack component addition for `26.5.2` was locally validated on May 17, 2026:
+
+- stack files `1.33`, `1.34`, `1.35`, and `1.36` include `install_metallb=true`, `metallb_version=0.15.3`, and `metallb_load_balancer_ip_range=10.86.6.94/32`
+- local checks passed for `bash -n ./cns.sh`, `python3 -m py_compile tests/test_cns_matrix.py`, all minimum Ansible syntax checks, `./cns.sh help`, invalid `install_metallb` boolean rejection, and `git diff --check`
+- full remote MetalLB QA has not yet been run
+
 ## Idempotency Expectations
 
 - An install rerun on an already deployed stack should converge cleanly.
@@ -286,7 +292,7 @@ The repeated `--set` stack parameter matrix was validated against `10.86.6.94` o
 ## Git
 
 - Default branch is `main`.
-- Current feature branch for CNS stack `26.5.1` work is `26.5.1`.
-- The `26.5.1` branch is published as `origin/26.5.1`.
+- Current feature branch for CNS stack `26.5.2` work is `26.5.2`.
+- The `26.5.2` branch is published as `origin/26.5.2`.
 - Keep commits focused and non-interactive.
 - Do not rewrite history unless explicitly requested.
