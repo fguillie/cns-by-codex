@@ -79,7 +79,7 @@ def main() -> int:
 
     rc = run_matrix(command, repo_root, matrix_log_path, base_dir)
     finished_at = utc_timestamp()
-    status = "passed" if rc == 0 else "failed"
+    status = "passed" if rc == 0 else "stopped" if rc == 130 else "failed"
     state.update(
         {
             "status": status,
@@ -154,14 +154,24 @@ def run_matrix(
         )
         last_dashboard = 0.0
         assert process.stdout is not None
-        for line in process.stdout:
-            log_file.write(line)
-            log_file.flush()
-            now = time.monotonic()
-            if now - last_dashboard >= 5:
-                generate_dashboard(base_dir)
-                last_dashboard = now
-        rc = process.wait()
+        try:
+            for line in process.stdout:
+                log_file.write(line)
+                log_file.flush()
+                now = time.monotonic()
+                if now - last_dashboard >= 5:
+                    generate_dashboard(base_dir)
+                    last_dashboard = now
+            rc = process.wait()
+        except KeyboardInterrupt:
+            process.terminate()
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            rc = 130
+            log_file.write("\n# interrupted by operator\n")
         log_file.write(f"\n# exit_code={rc}\n")
         log_file.flush()
     return rc

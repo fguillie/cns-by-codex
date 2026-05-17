@@ -286,6 +286,7 @@ def main() -> int:
         finished_at=None,
         exit_code=None,
         results=results,
+        current_case=None,
     )
 
     with tempfile.TemporaryDirectory(prefix="cns-inventory-") as inventory_dir:
@@ -345,6 +346,7 @@ def main() -> int:
                     finished_at=utc_timestamp(),
                     exit_code=1,
                     results=results,
+                    current_case=None,
                 )
                 return 1
 
@@ -360,11 +362,35 @@ def main() -> int:
                 case_overrides,
             )
             print(f"[{index}/{len(cases)}] {case_name}")
+
+            def emit_case_progress(case_result: CaseResult) -> None:
+                emit_matrix_result(
+                    result_json,
+                    status="running",
+                    repo_root=repo_root,
+                    args=args,
+                    stacks=stacks,
+                    override_sets=override_sets,
+                    cases_total=len(cases),
+                    log_dir=log_dir,
+                    started_at=started_at,
+                    finished_at=None,
+                    exit_code=None,
+                    results=results,
+                    current_case={
+                        "index": index,
+                        "total": len(cases),
+                        "name": case_name,
+                        "result": asdict(case_result),
+                    },
+                )
+
             result = run_case(
                 runner,
                 case_name,
                 stack,
                 case_overrides,
+                progress=emit_case_progress,
             )
             results.append(result)
             print_table(results)
@@ -382,6 +408,12 @@ def main() -> int:
                 finished_at=None,
                 exit_code=None,
                 results=results,
+                current_case={
+                    "index": index,
+                    "total": len(cases),
+                    "name": case_name,
+                    "result": asdict(result),
+                },
             )
             if args.fail_fast and result.result != "pass":
                 break
@@ -403,6 +435,7 @@ def main() -> int:
             finished_at=utc_timestamp(),
             exit_code=1,
             results=results,
+            current_case=None,
         )
         return 1
 
@@ -420,6 +453,7 @@ def main() -> int:
         finished_at=utc_timestamp(),
         exit_code=0,
         results=results,
+        current_case=None,
     )
     return 0
 
@@ -737,6 +771,7 @@ def emit_matrix_result(
     finished_at: str | None,
     exit_code: int | None,
     results: list[CaseResult],
+    current_case: dict[str, object] | None,
 ) -> None:
     if path is None:
         return
@@ -764,6 +799,7 @@ def emit_matrix_result(
         "cases_completed": len(results),
         "failed_cases": failed_cases,
         "passed_cases": len(results) - failed_cases,
+        "current_case": current_case,
         "results": [asdict(result) for result in results],
     }
     write_json_atomic(path, payload)
@@ -805,6 +841,7 @@ def run_case(
     case_name: str,
     stack: Stack,
     overrides: dict[str, str],
+    progress: Callable[[CaseResult], None] | None = None,
 ) -> CaseResult:
     started = time.monotonic()
     config = effective_stack_config(stack, overrides)
@@ -821,11 +858,20 @@ def run_case(
         ),
         case_name=case_name,
     )
+
+    def notify() -> None:
+        if progress is not None:
+            progress(result)
+
+    result.result = "running"
+    notify()
     case_log_dir = runner.log_dir / case_name
     case_log_dir.mkdir(parents=True, exist_ok=True)
     nfs_dir_preexisted = remote_path_exists(runner, NFS_EXPORT_PATH)
 
     try:
+        result.install = "running"
+        notify()
         install = runner.run_install(
             stack,
             overrides,
@@ -833,9 +879,12 @@ def run_case(
         )
         install_recap = parse_recap(install.stdout)
         result.install = phase_status(install, install_recap)
+        notify()
         if result.install != "pass":
             raise RuntimeError(f"install failed; see {install.log_path}")
 
+        result.rerun = "running"
+        notify()
         rerun = runner.run_install(
             stack,
             overrides,
@@ -843,6 +892,7 @@ def run_case(
         )
         rerun_recap = parse_recap(rerun.stdout)
         result.rerun = phase_status(rerun, rerun_recap, require_changed_zero=True)
+        notify()
         if result.rerun != "pass":
             changed = rerun_recap.get("changed", "?")
             raise RuntimeError(
@@ -850,19 +900,27 @@ def run_case(
                 f"see {rerun.log_path}"
             )
 
+        result.validate = "running"
+        notify()
         validate_install_state(
             runner,
             config,
             case_log_dir,
         )
         result.validate = "pass"
+        notify()
 
+        result.uninstall = "running"
+        notify()
         uninstall = runner.run_uninstall(case_log_dir / "03-uninstall.log")
         uninstall_recap = parse_recap(uninstall.stdout)
         result.uninstall = phase_status(uninstall, uninstall_recap)
+        notify()
         if result.uninstall != "pass":
             raise RuntimeError(f"uninstall failed; see {uninstall.log_path}")
 
+        result.cleanup = "running"
+        notify()
         uninstall_rerun = runner.run_uninstall(
             case_log_dir / "04-uninstall-rerun.log"
         )
@@ -872,6 +930,7 @@ def run_case(
             cleanup_recap,
             require_changed_zero=True,
         )
+        notify()
         if result.cleanup != "pass":
             changed = cleanup_recap.get("changed", "?")
             raise RuntimeError(
@@ -891,6 +950,7 @@ def run_case(
         result.result = "fail"
     finally:
         result.seconds = time.monotonic() - started
+        notify()
     return result
 
 

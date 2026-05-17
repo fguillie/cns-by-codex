@@ -7,6 +7,7 @@ import argparse
 import html
 import json
 import pathlib
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -25,6 +26,23 @@ VALIDATION_LOGS = (
     "validate-gpu-helm.log",
     "validate-nfs-helm.log",
     "validate-metallb-helm.log",
+)
+CONSOLE_HEADERS = (
+    "STACK",
+    "GPU_OPERATOR",
+    "CUDA_DRIVER",
+    "NFS_LOCAL_PROVISIONER",
+    "METALLB",
+    "METALLB_RANGE",
+    "CONTAINERD",
+    "INSTALL",
+    "RERUN",
+    "VALIDATE",
+    "UNINSTALL",
+    "CLEANUP",
+    "SECONDS",
+    "RESULT",
+    "REASON",
 )
 
 
@@ -161,6 +179,7 @@ def render_dashboard(
             (
                 hero_section(selected, generated_at),
                 summary_grid(selected),
+                console_matrix_section(base_dir, selected),
                 case_table(base_dir, selected),
                 recent_runs_table(runs),
             )
@@ -171,7 +190,7 @@ def render_dashboard(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="30">
+  <meta http-equiv="refresh" content="5">
   <title>CNS Matrix Dashboard</title>
   <style>
     :root {{
@@ -231,7 +250,7 @@ def render_dashboard(
     .badge.pass, .pill.pass {{ background: #dff3e9; color: var(--pass); }}
     .badge.fail, .pill.fail {{ background: #fde7e5; color: var(--fail); }}
     .badge.running, .pill.running {{ background: #fff1cc; color: var(--run); }}
-    .badge.unknown, .pill.unknown, .pill.skip {{ background: #e9edf3; color: var(--skip); }}
+    .badge.unknown, .pill.unknown, .pill.skip, .pill.stopped, .badge.stopped {{ background: #e9edf3; color: var(--skip); }}
     .summary {{
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -285,6 +304,21 @@ def render_dashboard(
       padding: 22px;
       margin-top: 18px;
     }}
+    .console {{
+      background: #111820;
+      color: #e9eef5;
+      border-radius: 8px;
+      border: 1px solid #2a3542;
+      padding: 14px;
+      overflow-x: auto;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }}
+    .console pre {{
+      margin: 0;
+      font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      white-space: pre;
+      tab-size: 2;
+    }}
     footer {{ margin-top: 28px; color: var(--muted); font-size: 12px; }}
   </style>
 </head>
@@ -293,7 +327,7 @@ def render_dashboard(
     <h1>CNS Matrix Dashboard</h1>
     <div class="topline">
       <span>Web status: {current_status}</span>
-      <span>Auto-refreshes every 30 seconds</span>
+      <span>Auto-refreshes every 5 seconds</span>
     </div>
   </header>
   <main>
@@ -367,6 +401,161 @@ def summary_grid(run: dict[str, Any]) -> str:
         for label, value in values
     )
     return f'<section class="summary">{metrics}</section>'
+
+
+def console_matrix_section(base_dir: pathlib.Path, run: dict[str, Any]) -> str:
+    current = run.get("current_case")
+    current_line = current_case_line(current) or live_current_line_from_log(
+        base_dir,
+        run,
+    )
+    console_rows = console_result_rows(run)
+    if current_line or console_rows:
+        console = "\n".join(
+            item for item in (current_line, format_console_table(console_rows)) if item
+        )
+    else:
+        console = live_console_from_log(base_dir, run)
+    return f"""
+<section>
+  <h2>Live Matrix Output</h2>
+  <div class="console"><pre>{html.escape(console)}</pre></div>
+</section>
+"""
+
+
+def current_case_line(current: object) -> str:
+    if not isinstance(current, dict):
+        return ""
+    index = current.get("index")
+    total = current.get("total")
+    name = current.get("name")
+    if index is None or total is None or not name:
+        return ""
+    return f"[{index}/{total}] {name}"
+
+
+def console_result_rows(run: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = run.get("results", [])
+    results = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    current = run.get("current_case")
+    if not isinstance(current, dict):
+        return results
+    current_result = current.get("result")
+    if not isinstance(current_result, dict):
+        return results
+    current_case_name = str(current_result.get("case_name") or "")
+    if not results or str(results[-1].get("case_name") or "") != current_case_name:
+        return [*results, current_result]
+    if str(current_result.get("result") or "") == "running":
+        return [*results[:-1], current_result]
+    return results
+
+
+def live_console_from_log(base_dir: pathlib.Path, run: dict[str, Any]) -> str:
+    run_id = str(run.get("_run_id") or "")
+    if not run_id:
+        return format_console_table([])
+    log_path = base_dir / "runs" / run_id / "matrix.log"
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return format_console_table([])
+
+    current_line = ""
+    for line in reversed(lines):
+        if re.match(r"^\[\d+/\d+\]\s+", line):
+            current_line = line
+            break
+
+    table_lines = latest_console_table(lines)
+    return "\n".join(item for item in (current_line, table_lines) if item)
+
+
+def live_current_line_from_log(base_dir: pathlib.Path, run: dict[str, Any]) -> str:
+    run_id = str(run.get("_run_id") or "")
+    if not run_id:
+        return ""
+    log_path = base_dir / "runs" / run_id / "matrix.log"
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        if re.match(r"^\[\d+/\d+\]\s+", line):
+            return line
+    return ""
+
+
+def latest_console_table(lines: list[str]) -> str:
+    header_index = -1
+    for index, line in enumerate(lines):
+        if line.startswith("STACK | GPU_OPERATOR"):
+            header_index = index
+    if header_index < 0:
+        return format_console_table([])
+
+    table = []
+    for line in lines[header_index:]:
+        if not line.strip():
+            break
+        if table and re.match(r"^\[\d+/\d+\]\s+", line):
+            break
+        table.append(line)
+    return "\n".join(table)
+
+
+def format_console_table(results: list[dict[str, Any]]) -> str:
+    rows = [console_row(result) for result in results]
+    widths = [
+        max(len(CONSOLE_HEADERS[index]), *(len(row[index]) for row in rows))
+        if rows
+        else len(CONSOLE_HEADERS[index])
+        for index in range(len(CONSOLE_HEADERS))
+    ]
+    header = " | ".join(
+        CONSOLE_HEADERS[index].ljust(widths[index])
+        for index in range(len(CONSOLE_HEADERS))
+    )
+    separator = "-+-".join("-" * width for width in widths)
+    rendered_rows = [
+        " | ".join(row[index].ljust(widths[index]) for index in range(len(row)))
+        for row in rows
+    ]
+    return "\n".join([header, separator, *rendered_rows])
+
+
+def console_row(result: dict[str, Any]) -> list[str]:
+    return [
+        str(result.get("stack") or ""),
+        str(result.get("gpu_operator_version") or ""),
+        str(result.get("cuda_driver_version") or ""),
+        str(result.get("nfs_provisioner_version") or ""),
+        str(result.get("metallb_version") or ""),
+        str(result.get("metallb_ip_range") or ""),
+        str(result.get("containerd_version") or ""),
+        str(result.get("install") or ""),
+        str(result.get("rerun") or ""),
+        str(result.get("validate") or ""),
+        str(result.get("uninstall") or ""),
+        str(result.get("cleanup") or ""),
+        seconds_value(result.get("seconds")),
+        str(result.get("result") or ""),
+        console_truncate(str(result.get("reason") or ""), 72),
+    ]
+
+
+def seconds_value(value: object) -> str:
+    try:
+        return f"{float(value):.0f}"
+    except (TypeError, ValueError):
+        return "0"
+
+
+def console_truncate(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return value[: limit - 3] + "..."
 
 
 def case_table(base_dir: pathlib.Path, run: dict[str, Any]) -> str:
@@ -568,6 +757,8 @@ def normalized_status(value: object) -> str:
         return "fail"
     if status in ("running", "pending"):
         return "running"
+    if status == "stopped":
+        return "stopped"
     if status == "skip":
         return "skip"
     return "unknown"
