@@ -269,7 +269,16 @@ The MetalLB stack component addition for `26.5.2` was locally validated on May 1
 
 - stack files `1.33`, `1.34`, `1.35`, and `1.36` include `install_metallb=true`, `metallb_version=0.15.3`, and `metallb_load_balancer_ip_range=10.86.6.94/32`
 - local checks passed for `bash -n ./cns.sh`, `python3 -m py_compile tests/test_cns_matrix.py`, all minimum Ansible syntax checks, `./cns.sh help`, invalid `install_metallb` boolean rejection, and `git diff --check`
-- full remote MetalLB QA has not yet been run
+
+The MetalLB permutation matrix was validated against `10.86.9.190` on May 17, 2026:
+
+- stack `1.36`
+- all combinations of `install_gpu_operator=true|false`, `install_nfs_provisioner=true|false`, and `install_metallb=true|false`
+- install, immediate install rerun with `changed=0`, validation, uninstall, uninstall rerun, and cleanup checks passed for all eight cases
+- MetalLB-enabled paths confirmed chart `metallb-0.15.3`, `speaker.ignoreExcludeLB=true`, CNS `IPAddressPool` range `10.86.6.94/32`, CNS `L2Advertisement`, and a temporary `LoadBalancer` Service external IP from the configured range
+- GPU-enabled paths confirmed chart `gpu-operator-v26.3.1`, driver container `580.126.20`, CNS driver kernel module config, `ClusterPolicy` ready, and `nvidia.com/gpu` allocatable
+- NFS-enabled paths confirmed chart `nfs-subdir-external-provisioner-4.0.18`, default `nfs-client` StorageClass, and a bound test PVC
+- final host state after validation: uninstalled, `containerd` inactive, `kubelet` inactive, no `/etc/kubernetes/admin.conf`, CNS NFS export removed, and `/srv/cns/nfs` preserved
 
 ## Idempotency Expectations
 
