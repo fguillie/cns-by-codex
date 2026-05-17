@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Callable, Iterable
 
@@ -104,6 +104,7 @@ class CaseResult:
     seconds: float = 0.0
     result: str = "fail"
     reason: str = ""
+    case_name: str = ""
 
 
 class Runner:
@@ -269,6 +270,23 @@ def main() -> int:
     override_sets = parse_set_overrides(args.set_overrides)
     cases = build_cases(stacks, override_sets)
     log_dir = make_log_dir(args.log_dir)
+    started_at = utc_timestamp()
+    result_json = args.result_json.resolve() if args.result_json else None
+    results: list[CaseResult] = []
+    emit_matrix_result(
+        result_json,
+        status="running",
+        repo_root=repo_root,
+        args=args,
+        stacks=stacks,
+        override_sets=override_sets,
+        cases_total=len(cases),
+        log_dir=log_dir,
+        started_at=started_at,
+        finished_at=None,
+        exit_code=None,
+        results=results,
+    )
 
     with tempfile.TemporaryDirectory(prefix="cns-inventory-") as inventory_dir:
         inventory_path = pathlib.Path(inventory_dir) / "hosts.ini"
@@ -297,24 +315,39 @@ def main() -> int:
             pre_clean = runner.run_uninstall(log_dir / "pre-clean-uninstall.log")
             if pre_clean.rc != 0:
                 print("Pre-clean uninstall failed; see log for details.")
+                results = [
+                    CaseResult(
+                        stack="-",
+                        gpu_operator_version="-",
+                        nfs_provisioner_version="-",
+                        metallb_version="-",
+                        metallb_ip_range="-",
+                        containerd_version="-",
+                        cuda_driver_version="-",
+                        cleanup="fail",
+                        reason="pre-clean uninstall failed",
+                        case_name="pre-clean",
+                    )
+                ]
                 print_table(
-                    [
-                        CaseResult(
-                            stack="-",
-                            gpu_operator_version="-",
-                            nfs_provisioner_version="-",
-                            metallb_version="-",
-                            metallb_ip_range="-",
-                            containerd_version="-",
-                            cuda_driver_version="-",
-                            cleanup="fail",
-                            reason="pre-clean uninstall failed",
-                        )
-                    ]
+                    results
+                )
+                emit_matrix_result(
+                    result_json,
+                    status="failed",
+                    repo_root=repo_root,
+                    args=args,
+                    stacks=stacks,
+                    override_sets=override_sets,
+                    cases_total=len(cases),
+                    log_dir=log_dir,
+                    started_at=started_at,
+                    finished_at=utc_timestamp(),
+                    exit_code=1,
+                    results=results,
                 )
                 return 1
 
-        results: list[CaseResult] = []
         for index, (stack, case_overrides) in enumerate(
             cases,
             start=1,
@@ -336,6 +369,20 @@ def main() -> int:
             results.append(result)
             print_table(results)
             print()
+            emit_matrix_result(
+                result_json,
+                status="running",
+                repo_root=repo_root,
+                args=args,
+                stacks=stacks,
+                override_sets=override_sets,
+                cases_total=len(cases),
+                log_dir=log_dir,
+                started_at=started_at,
+                finished_at=None,
+                exit_code=None,
+                results=results,
+            )
             if args.fail_fast and result.result != "pass":
                 break
 
@@ -343,9 +390,37 @@ def main() -> int:
     failed = [result for result in results if result.result != "pass"]
     if failed:
         print(f"\nFailed cases: {len(failed)} of {len(results)}")
+        emit_matrix_result(
+            result_json,
+            status="failed",
+            repo_root=repo_root,
+            args=args,
+            stacks=stacks,
+            override_sets=override_sets,
+            cases_total=len(cases),
+            log_dir=log_dir,
+            started_at=started_at,
+            finished_at=utc_timestamp(),
+            exit_code=1,
+            results=results,
+        )
         return 1
 
     print(f"\nAll cases passed: {len(results)}")
+    emit_matrix_result(
+        result_json,
+        status="passed",
+        repo_root=repo_root,
+        args=args,
+        stacks=stacks,
+        override_sets=override_sets,
+        cases_total=len(cases),
+        log_dir=log_dir,
+        started_at=started_at,
+        finished_at=utc_timestamp(),
+        exit_code=0,
+        results=results,
+    )
     return 0
 
 
@@ -402,6 +477,12 @@ def parse_args(repo_root: pathlib.Path) -> argparse.Namespace:
         type=pathlib.Path,
         default=None,
         help="Directory for command logs. Defaults to a temp directory.",
+    )
+    parser.add_argument(
+        "--result-json",
+        type=pathlib.Path,
+        default=None,
+        help="Write structured matrix progress and final results to this JSON file.",
     )
     return parser.parse_args()
 
@@ -635,6 +716,69 @@ def make_log_dir(requested: pathlib.Path | None) -> pathlib.Path:
     return pathlib.Path(tempfile.mkdtemp(prefix=f"cns-matrix-{stamp}-"))
 
 
+def utc_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00",
+        "Z",
+    )
+
+
+def emit_matrix_result(
+    path: pathlib.Path | None,
+    *,
+    status: str,
+    repo_root: pathlib.Path,
+    args: argparse.Namespace,
+    stacks: list[Stack],
+    override_sets: dict[str, list[str]],
+    cases_total: int,
+    log_dir: pathlib.Path,
+    started_at: str,
+    finished_at: str | None,
+    exit_code: int | None,
+    results: list[CaseResult],
+) -> None:
+    if path is None:
+        return
+
+    failed_cases = sum(result.result != "pass" for result in results)
+    payload = {
+        "schema_version": 1,
+        "status": status,
+        "started_at": started_at,
+        "updated_at": utc_timestamp(),
+        "finished_at": finished_at,
+        "exit_code": exit_code,
+        "repo_root": str(repo_root),
+        "target": {
+            "host": args.host,
+            "user": args.user,
+        },
+        "stacks": [stack.version for stack in stacks],
+        "stack_overrides": override_sets,
+        "stack_overrides_label": format_stack_overrides(override_sets),
+        "fail_fast": args.fail_fast,
+        "pre_clean": args.pre_clean,
+        "log_dir": str(log_dir),
+        "cases_total": cases_total,
+        "cases_completed": len(results),
+        "failed_cases": failed_cases,
+        "passed_cases": len(results) - failed_cases,
+        "results": [asdict(result) for result in results],
+    }
+    write_json_atomic(path, payload)
+
+
+def write_json_atomic(path: pathlib.Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    tmp_path.replace(path)
+
+
 def write_inventory(
     path: pathlib.Path,
     host: str,
@@ -675,6 +819,7 @@ def run_case(
             config,
             overrides,
         ),
+        case_name=case_name,
     )
     case_log_dir = runner.log_dir / case_name
     case_log_dir.mkdir(parents=True, exist_ok=True)

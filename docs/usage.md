@@ -67,6 +67,24 @@ To override the MetalLB load-balancer IP range:
 ./cns.sh uninstall
 ```
 
+## Matrix Dashboard Service
+
+Install the systemd units on the control host when live matrix runs need to survive SSH logout and publish web-visible results:
+
+```bash
+sudo ./tools/install_cns_matrix_services.sh
+```
+
+The installer starts `cns-matrix-web.service` on port `8888`, creates `/var/lib/cns-matrix`, and writes `/etc/cns-matrix.env` with mode `0600` if the file does not already exist. Review the target settings and password in that environment file, then start a run:
+
+```bash
+sudo systemctl start --no-block cns-matrix.service
+```
+
+By default, the service runs `tests/test_cns_matrix.py` against all discovered stacks with stack defaults. Set `CNS_MATRIX_ARGS` in `/etc/cns-matrix.env` to pass script options such as `--stack 1.36 --set install_gpu_operator=false --fail-fast`.
+
+Open `http://<control-host>:8888/` for the dashboard. Raw run data and logs are kept under `/var/lib/cns-matrix/runs`.
+
 ## Direct Ansible Execution
 
 You can bypass the shell wrapper if needed:

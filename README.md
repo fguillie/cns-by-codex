@@ -203,6 +203,33 @@ GPU-enabled validation checks the GPU Operator Helm chart version, the effective
 
 The script prints a table with each case result and writes detailed command logs to a temporary directory unless `--log-dir` is provided. Use `--no-pre-clean` to skip the initial uninstall, `--command-timeout` to adjust the per-command timeout, and `--wait-interval` to adjust validation polling. The control machine must have `python3`, `ansible-playbook`, `ssh`, and `sshpass` available.
 
+## Matrix Dashboard Service
+
+The matrix runner can be installed as a systemd service so it continues after the SSH session exits, with results published through a static dashboard on port `8888`:
+
+```bash
+sudo ./tools/install_cns_matrix_services.sh
+sudo systemctl start --no-block cns-matrix.service
+```
+
+The installer creates `/etc/cns-matrix.env` with mode `0600` if it does not already exist. Review that file before starting a run:
+
+```bash
+CNS_TEST_PASSWORD='<target-password>'
+CNS_MATRIX_HOST='10.86.6.94'
+CNS_MATRIX_USER='nvidia'
+CNS_MATRIX_ARGS=''
+```
+
+By default, `cns-matrix.service` runs the full matrix across all discovered stack files with stack defaults. Set `CNS_MATRIX_ARGS` to pass the same options accepted by `tests/test_cns_matrix.py`, for example `--stack 1.36 --set install_gpu_operator=false --set install_nfs_provisioner=false --set install_metallb=false --fail-fast`.
+
+The dashboard is served from `/var/lib/cns-matrix/www` and links to durable run artifacts under `/var/lib/cns-matrix/runs`. Open `http://<control-host>:8888/` to watch progress, or inspect the service directly:
+
+```bash
+systemctl status cns-matrix.service
+journalctl -u cns-matrix.service -f
+```
+
 The CUDA driver override matrix was last validated on May 13, 2026 against `10.86.9.190` for stack `1.36` with GPU Operator enabled, NFS provisioner disabled, and driver container versions `580.159.03`, `580.126.20`, and `595.71.05`; all install, rerun, validation, uninstall, and cleanup checks passed.
 
 ## Documentation

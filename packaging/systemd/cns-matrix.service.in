@@ -1,0 +1,18 @@
+# Runs the CNS matrix validation as a durable systemd job.
+[Unit]
+Description=CNS matrix validation
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__REPO_ROOT__
+EnvironmentFile=/etc/cns-matrix.env
+ExecStart=/usr/bin/python3 __REPO_ROOT__/tools/cns_matrix_service.py --repo-root __REPO_ROOT__ --base-dir /var/lib/cns-matrix
+KillSignal=SIGINT
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target
