@@ -9,9 +9,10 @@ This repository builds and tests CNS, a single-node Kubernetes deployment for Ub
 - `kubeadm`
 - `containerd`
 - Calico
-- Helm when GPU Operator, NFS provisioner, or MetalLB is enabled
+- Helm when GPU Operator, NFS provisioner, MetalLB, or Envoy Gateway is enabled
 - NFS server and `nfs-subdir-external-provisioner`, enabled by default and optional at install time
 - MetalLB, enabled by default and optional at install time
+- Envoy Gateway, enabled by default and optional at install time
 - NVIDIA GPU Operator, enabled by default and optional at install time
 
 The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps the Ansible playbook under [`ansible/`](/nvidia/CODEX/CNS/ansible/site.yml:1).
@@ -21,11 +22,12 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Stack definitions live only in [`stacks/`](/nvidia/CODEX/CNS/stacks/1.36.yml:1).
 - One file exists per supported Kubernetes minor branch.
 - Do not hardcode component versions in the roles or shell wrapper when they belong in a stack file.
-- Stack files also define default install choices with `install_gpu_operator`, `install_nfs_provisioner`, and `install_metallb`.
+- Stack files also define default install choices with `install_gpu_operator`, `install_nfs_provisioner`, `install_metallb`, and `install_envoy_gateway`.
 - The currently pinned GPU Operator line is `v26.3.1`.
 - The currently pinned CUDA driver container line is `580.126.20`.
 - The currently pinned `nfs-subdir-external-provisioner` chart line is `4.0.18`.
 - The currently pinned MetalLB chart line is `0.15.3`.
+- The currently pinned Envoy Gateway chart line is `1.8.0`.
 
 ## Repo Structure
 
@@ -36,15 +38,23 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - [`ansible/roles/helm_client`](/nvidia/CODEX/CNS/ansible/roles/helm_client/tasks/main.yml:1): Helm client install and removal for Helm-backed roles
 - [`ansible/roles/nfs_provisioner`](/nvidia/CODEX/CNS/ansible/roles/nfs_provisioner/tasks/main.yml:1): NFS server export and `nfs-subdir-external-provisioner` deployment
 - [`ansible/roles/metallb`](/nvidia/CODEX/CNS/ansible/roles/metallb/tasks/main.yml:1): MetalLB deployment and Layer 2 address pool configuration
+- [`ansible/roles/envoy_gateway`](/nvidia/CODEX/CNS/ansible/roles/envoy_gateway/tasks/main.yml:1): Envoy Gateway deployment
 - [`ansible/roles/gpu_operator`](/nvidia/CODEX/CNS/ansible/roles/gpu_operator/tasks/main.yml:1): GPU Operator deployment
 - [`ansible/inventory/hosts.ini`](/nvidia/CODEX/CNS/ansible/inventory/hosts.ini:1): user-edited target inventory
 - [`tests/test_cns_matrix.py`](/nvidia/CODEX/CNS/tests/test_cns_matrix.py:1): live CNS release and stack-parameter validation matrix
+- [`tests/TESTS_README.md`](/nvidia/CODEX/CNS/tests/TESTS_README.md:1): matrix service and dashboard deployment notes
+- [`tools/cns_matrix_service.py`](/nvidia/CODEX/CNS/tools/cns_matrix_service.py:1): systemd-run matrix service wrapper and queue drain loop
+- [`tools/cns_matrix_web.py`](/nvidia/CODEX/CNS/tools/cns_matrix_web.py:1): dashboard web server and constrained start/stop API
+- [`tools/cns_matrix_dashboard.py`](/nvidia/CODEX/CNS/tools/cns_matrix_dashboard.py:1): static dashboard generator
+- [`tools/install_cns_matrix_services.sh`](/nvidia/CODEX/CNS/tools/install_cns_matrix_services.sh:1): systemd, runtime directory, and sudoers installer
+- [`tools/set_cns_matrix_args.sh`](/nvidia/CODEX/CNS/tools/set_cns_matrix_args.sh:1): protected `CNS_MATRIX_ARGS` updater for dashboard-started runs
+- [`packaging/systemd/`](/nvidia/CODEX/CNS/packaging/systemd/cns-matrix.service.in:1): matrix runner and dashboard service templates
 - [`docs/`](/nvidia/CODEX/CNS/docs/usage.md:1): user documentation
 
 ## Change Rules
 
 - Preserve Ubuntu 24.04 as the supported OS unless the project scope changes explicitly.
-- Preserve the split between the `kubernetes`, `helm_client`, `nfs_provisioner`, `metallb`, and `gpu_operator` roles.
+- Preserve the split between the `kubernetes`, `helm_client`, `nfs_provisioner`, `metallb`, `envoy_gateway`, and `gpu_operator` roles.
 - Keep `cns.sh uninstall` runnable without requiring a stack file.
 - Prefer reproducible pinned versions over dynamic `latest` lookups at runtime.
 - Do not add hidden version logic outside the stack manifests.
@@ -60,6 +70,10 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Keep MetalLB enabled by default unless the user explicitly requests otherwise.
 - Expose MetalLB opt-out only as an install-time stack parameter override, not as a separate stack manifest.
 - Keep the MetalLB chart version and load-balancer IP range in stack files, not in role logic.
+- Keep Envoy Gateway enabled by default unless the user explicitly requests otherwise.
+- Expose Envoy Gateway opt-out only as an install-time stack parameter override, not as a separate stack manifest.
+- Keep the Envoy Gateway chart version in stack files, not in role logic.
+- Expose Envoy Gateway version override only as an install-time stack parameter override, not as a separate stack manifest.
 - Preserve `/srv/cns/nfs` data on uninstall unless the user explicitly requests destructive cleanup.
 - Keep install-time driver cleanup in the `precheck` role, before Kubernetes and GPU Operator roles, and run it only when GPU Operator installation is enabled.
 - Do not rely on `ansible_user_dir` to locate the selected admin user's home when `become` is active; resolve `cns_admin_user` through the target passwd database.
@@ -71,8 +85,12 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - Containerd `2.3.0` and later requires a root config with `version = 4`; a v2 root config breaks GPU Operator generated v4 drop-ins.
 - CNS uses a root config with `version = 3` for containerd versions before `2.3.0`; `2.2.3` cannot read a v4 config.
 - On already initialized nodes with the desired containerd config version, do not rewrite `/etc/containerd/config.toml`; GPU Operator may have added runtime settings that must survive steady-state reruns.
-- Do not remove the shared `helm_client` role unless GPU Operator, NFS provisioner, and MetalLB Helm lifecycle ordering is revalidated. Helm must remain available until all Helm-backed components have been removed during uninstall.
+- Do not remove the shared `helm_client` role unless GPU Operator, NFS provisioner, MetalLB, and Envoy Gateway Helm lifecycle ordering is revalidated. Helm must remain available until all Helm-backed components have been removed during uninstall.
 - Keep artifact downloads tolerant of transient upstream slowness by using `cns_download_timeout` and retries for `get_url` tasks.
+- Keep dashboard secrets out of git. The matrix dashboard service must read target credentials from `/etc/cns-matrix.env`, not from tracked files.
+- Keep matrix service runtime state under `/var/lib/cns-matrix`; do not write dashboard run logs, queue state, or web artifacts into the repository.
+- Keep dashboard start/stop privileges narrowly scoped. The installer should only grant passwordless sudo for `systemctl start --no-block cns-matrix.service`, `systemctl stop cns-matrix.service`, and `tools/set_cns_matrix_args.sh *`.
+- Do not add unauthenticated destructive dashboard actions beyond starting, stopping, or removing queued CNS matrix runs without also adding an explicit access-control design. The dashboard has no built-in authentication and port `8888` must be treated as trusted-network only.
 
 ## File Headers
 
@@ -84,7 +102,7 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 
 ## Install Flow
 
-- `./cns.sh install <stack-version>` sets `cns_action=install`, loads the selected stack file, and uses the stack file's `install_gpu_operator`, `install_nfs_provisioner`, and `install_metallb` defaults.
+- `./cns.sh install <stack-version>` sets `cns_action=install`, loads the selected stack file, and uses the stack file's `install_gpu_operator`, `install_nfs_provisioner`, `install_metallb`, and `install_envoy_gateway` defaults.
 - `cns.sh` exports `ANSIBLE_CONFIG=ansible/ansible.cfg` so password-based SSH uses the repository host-key-checking setting.
 - `./cns.sh install <stack-version> --set install_gpu_operator=true` is the explicit default-enabled GPU Operator form.
 - `./cns.sh install <stack-version> --set install_gpu_operator=false` skips GPU Operator validation, skips the `precheck` role, and skips the `gpu_operator` role.
@@ -95,12 +113,17 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - `./cns.sh install <stack-version> --set install_metallb=true` is the explicit default-enabled MetalLB form.
 - `./cns.sh install <stack-version> --set install_metallb=false` skips MetalLB deployment and load-balancer address pool configuration.
 - `./cns.sh install <stack-version> --set metallb_load_balancer_ip_range=<range>` overrides the selected stack file's MetalLB address pool for that install.
+- `./cns.sh install <stack-version> --set install_envoy_gateway=true` is the explicit default-enabled Envoy Gateway form.
+- `./cns.sh install <stack-version> --set install_envoy_gateway=false` skips Envoy Gateway deployment.
+- `./cns.sh install <stack-version> --set envoy_gateway_version=<version>` overrides the selected stack file's Envoy Gateway chart version for that install.
+- `./cns.sh install <stack-version> --set envoy_gateway_version=<version>` requires Envoy Gateway installation and must fail before Ansible when combined with `--set install_envoy_gateway=false`.
 - `./cns.sh install <stack-version> --set <key>=<value>` may override only top-level keys present in the selected stack file.
-- `install_gpu_operator`, `install_nfs_provisioner`, and `install_metallb` override values must be `true` or `false`.
+- `install_gpu_operator`, `install_nfs_provisioner`, `install_metallb`, and `install_envoy_gateway` override values must be `true` or `false`.
 - The playbook validates the action and stack variables first.
 - The playbook validates `gpu_operator_version`, `cuda_driver_container_version`, and `helm_version` only when GPU Operator is enabled.
 - The playbook validates `nfs_subdir_external_provisioner_version` and `helm_version` only when NFS provisioner is enabled.
 - The playbook validates `metallb_version`, `metallb_load_balancer_ip_range`, and `helm_version` only when MetalLB is enabled.
+- The playbook validates `envoy_gateway_version` and `helm_version` only when Envoy Gateway is enabled.
 - The `precheck` role runs only when `cns_action == 'install' and install_gpu_operator | bool`.
 - The `precheck` role runs before the `kubernetes`, `nfs_provisioner`, and `gpu_operator` roles.
 - The `precheck` role is not launched by `./cns.sh uninstall`.
@@ -113,9 +136,11 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - The `helm_client` role runs after Kubernetes install and before any enabled Helm-backed component.
 - The `nfs_provisioner` role installs `nfs-kernel-server`, exports `/srv/cns/nfs`, deploys the `nfs-subdir-external-provisioner` Helm release, and creates the default `nfs-client` StorageClass.
 - The `metallb` role installs MetalLB, creates the CNS `IPAddressPool`, and creates the CNS `L2Advertisement`.
-- Uninstall removes GPU Operator first, then NFS provisioner, then MetalLB, then Helm, then Kubernetes.
+- The `envoy_gateway` role installs the Envoy Gateway Helm release `eg` from `oci://docker.io/envoyproxy/gateway-helm` into `envoy-gateway-system`.
+- Uninstall removes GPU Operator first, then Envoy Gateway, then NFS provisioner, then MetalLB, then Helm, then Kubernetes.
 - NFS uninstall removes the Helm release, namespace, StorageClass, and CNS export config, but preserves `/srv/cns/nfs`.
 - MetalLB uninstall removes the Helm release and namespace.
+- Envoy Gateway uninstall removes the Helm release and namespace.
 
 ## Kubeconfig Handling
 
@@ -129,13 +154,27 @@ The main user entrypoint is [`cns.sh`](/nvidia/CODEX/CNS/cns.sh:1), which wraps 
 - [`ansible/inventory/hosts.ini`](/nvidia/CODEX/CNS/ansible/inventory/hosts.ini:1) is currently checked in with the tested QA host and working credentials.
 - If that inventory is changed for local development, be explicit about whether the repo should keep the live QA values or revert to a commented example before committing.
 
+## Matrix Dashboard Service
+
+- `tests/test_cns_matrix.py --result-json <path>` is the structured progress contract used by the dashboard. Keep the existing terminal table output stable while extending JSON output.
+- `cns-matrix.service` runs `tools/cns_matrix_service.py`, creates one run directory under `/var/lib/cns-matrix/runs/<run-id>`, writes `matrix.log`, `service.json`, and `summary.json`, and drains queued runs from `/var/lib/cns-matrix/state/queue.json`.
+- `cns-matrix-web.service` runs `tools/cns_matrix_web.py` on port `8888`, regenerates the dashboard on request, and serves `/api/start`, `/api/stop`, `/api/status`, `/view-log`, and `/view-json`.
+- The dashboard's Start button queues generated `CNS_MATRIX_ARGS`; if the matrix service is inactive, the web service starts it with systemd. If it is already active, the queued run waits for the service wrapper to drain it.
+- The dashboard's Stop button stops the active service or removes a queued item. Recent running rows must not allow another Start action for that same run.
+- Log and JSON links should open viewer pages in a new browser tab. Use `/view-log?path=...` and `/view-json?path=...` rather than linking directly to raw files when user-facing navigation should display content inline.
+- The dashboard keeps a manual Refresh button and refreshes itself every one minute. Avoid shorter automatic refresh intervals unless there is a specific operator need.
+- `tools/install_cns_matrix_services.sh` must restart `cns-matrix-web.service` after updating units so code changes take effect immediately.
+- Keep `/etc/cns-matrix.env` mode `0600`, root-owned. It stores `CNS_TEST_PASSWORD`, `CNS_MATRIX_HOST`, `CNS_MATRIX_USER`, and `CNS_MATRIX_ARGS`.
+
 ## Testing
 
 Minimum local checks before pushing:
 
 ```bash
 bash -n ./cns.sh
+bash -n tools/install_cns_matrix_services.sh tools/set_cns_matrix_args.sh
 python3 -m py_compile tests/test_cns_matrix.py
+python3 -m py_compile tools/cns_matrix_service.py tools/cns_matrix_web.py tools/cns_matrix_dashboard.py
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.33.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.34.yml
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.35.yml
@@ -143,8 +182,10 @@ ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml 
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_gpu_operator=false
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_nfs_provisioner=false
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_metallb=false
-ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_gpu_operator=false -e install_nfs_provisioner=false -e install_metallb=false
+ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_envoy_gateway=false
+ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e install_gpu_operator=false -e install_nfs_provisioner=false -e install_metallb=false -e install_envoy_gateway=false
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e cuda_driver_container_version=580.126.20
+ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=install -e @stacks/1.36.yml -e envoy_gateway_version=1.8.0
 ansible-playbook --syntax-check -i ansible/inventory/hosts.ini ansible/site.yml -e cns_action=uninstall
 ```
 
@@ -154,7 +195,7 @@ The live matrix script can automate the remote QA install, rerun, validation, un
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py --host 10.86.6.94 --user nvidia
 ```
 
-Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, `install_metallb`, `cuda_driver_container_version`, `metallb_load_balancer_ip_range`, or `containerd_version`. Use `--fail-fast` when iterating on a failure. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases. The result table reports the effective GPU Operator version, CUDA driver container version, NFS provisioner version, MetalLB version, MetalLB IP range, and containerd version for each case.
+Use `--stack` to limit releases and `--set <key>=<value>` to override top-level stack parameters such as `install_gpu_operator`, `install_nfs_provisioner`, `install_metallb`, `install_envoy_gateway`, `cuda_driver_container_version`, `envoy_gateway_version`, `metallb_load_balancer_ip_range`, or `containerd_version`. Use `--fail-fast` when iterating on a failure. Repeating an identical `--set` value is ignored so accidental duplicates do not add duplicate cases. The result table reports the effective GPU Operator version, CUDA driver container version, NFS provisioner version, MetalLB version, MetalLB IP range, Envoy Gateway version, and containerd version for each case.
 
 ```bash
 CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
@@ -164,6 +205,7 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --set install_gpu_operator=true \
   --set install_nfs_provisioner=true \
   --set install_metallb=true \
+  --set install_envoy_gateway=true \
   --set cuda_driver_container_version="580.126.20" \
   --set cuda_driver_container_version="580.159.03" \
   --set cuda_driver_container_version="595.71.05" \
@@ -173,17 +215,14 @@ CNS_TEST_PASSWORD='<target-password>' ./tests/test_cns_matrix.py \
   --fail-fast
 ```
 
-If full remote QA is requested and credentials are available, use the target inventory and validate:
+If full remote QA is requested and credentials are available, use the target inventory and validate all combinations of:
 
-1. `install --set install_gpu_operator=false --set install_nfs_provisioner=false --set install_metallb=false`
-2. immediate rerun for idempotency
-3. validation and `uninstall`
-4. `install --set install_gpu_operator=false --set install_nfs_provisioner=true --set install_metallb=true`
-5. immediate rerun, validation, and `uninstall`
-6. `install --set install_gpu_operator=true --set install_nfs_provisioner=false --set install_metallb=true`
-7. immediate rerun, validation, and `uninstall`
-8. `install --set install_gpu_operator=true --set install_nfs_provisioner=true --set install_metallb=true`
-9. immediate rerun, validation, `uninstall`, and immediate uninstall rerun for partially-clean uninstall idempotency
+- `install_gpu_operator=true|false`
+- `install_nfs_provisioner=true|false`
+- `install_metallb=true|false`
+- `install_envoy_gateway=true|false`
+
+For each case, run install, immediate install rerun for idempotency, validation, uninstall, immediate uninstall rerun, and cleanup checks. Include an all-disabled case and an all-enabled case explicitly in any shortened smoke pass.
 
 For live install validation with GPU Operator disabled, confirm:
 
@@ -217,6 +256,16 @@ For live install validation with MetalLB enabled, confirm:
 For live install validation with MetalLB disabled, confirm:
 
 - the `metallb-system` namespace is absent
+
+For live install validation with Envoy Gateway enabled, confirm:
+
+- the Envoy Gateway Helm release is deployed at the pinned chart version
+- the `envoy-gateway-system` namespace exists
+- the Envoy Gateway controller deployment rolls out successfully
+
+For live install validation with Envoy Gateway disabled, confirm:
+
+- the `envoy-gateway-system` namespace is absent
 
 For live install validation with GPU Operator enabled, confirm:
 
@@ -280,6 +329,25 @@ The MetalLB permutation matrix was validated against `10.86.9.190` on May 17, 20
 - NFS-enabled paths confirmed chart `nfs-subdir-external-provisioner-4.0.18`, default `nfs-client` StorageClass, and a bound test PVC
 - final host state after validation: uninstalled, `containerd` inactive, `kubelet` inactive, no `/etc/kubernetes/admin.conf`, CNS NFS export removed, and `/srv/cns/nfs` preserved
 
+The matrix dashboard service for `26.5.3` was locally validated on May 17, 2026:
+
+- `cns-matrix-web.service` serves the dashboard and control API on port `8888`
+- dashboard run configuration generates `CNS_MATRIX_ARGS`
+- Start queues runs and starts `cns-matrix.service` when inactive
+- Stop stops the active matrix service or removes queued runs
+- queued runs are displayed in the dashboard and drained sequentially by `tools/cns_matrix_service.py`
+- recent running rows disable Start and allow Stop only for the active service run
+- `matrix.log`, phase logs, and `summary.json` open in browser tabs through inline viewer routes
+- dashboard has a manual Refresh button and one-minute automatic refresh
+- local checks passed for shell syntax, Python compilation, and `git diff --check`
+
+The Envoy Gateway stack component addition for `26.5.4` was locally validated on May 18, 2026:
+
+- stack files `1.33`, `1.34`, `1.35`, and `1.36` include `install_envoy_gateway=true` and `envoy_gateway_version=1.8.0`
+- Envoy Gateway installs with Helm release `eg` from `oci://docker.io/envoyproxy/gateway-helm` into namespace `envoy-gateway-system`
+- local checks passed for shell syntax, Python compilation, all minimum Ansible syntax checks, `./cns.sh help`, invalid `install_envoy_gateway` boolean rejection, invalid disabled Envoy Gateway version override rejection, dashboard generation, and `git diff --check`
+- the dashboard was regenerated and `cns-matrix-web.service` was restarted on the local control host so the Run Configuration components section shows Envoy Gateway
+
 ## Idempotency Expectations
 
 - An install rerun on an already deployed stack should converge cleanly.
@@ -296,12 +364,14 @@ The MetalLB permutation matrix was validated against `10.86.9.190` on May 17, 20
 - MetalLB reruns must not reinstall or upgrade the Helm release when the deployed chart version already matches the selected stack.
 - MetalLB reruns must not reconfigure the Layer 2 resources when the deployed address pool already matches the selected stack or install-time override.
 - Changing `metallb_load_balancer_ip_range` on a MetalLB-enabled install rerun should update the CNS `IPAddressPool`.
+- Envoy Gateway reruns must not reinstall or upgrade the Helm release when the deployed chart version already matches the selected stack or install-time override.
+- Changing `envoy_gateway_version` on an Envoy Gateway-enabled install rerun should trigger a Helm upgrade so the requested chart version is applied.
 - Uninstall reruns should complete with `changed=0` after CNS has already been removed.
 
 ## Git
 
 - Default branch is `main`.
-- Current feature branch for CNS stack `26.5.2` work is `26.5.2`.
-- The `26.5.2` branch is published as `origin/26.5.2`.
+- Current feature branch for CNS stack `26.5.4` work is `26.5.4`.
+- The `26.5.4` branch is published as `origin/26.5.4`.
 - Keep commits focused and non-interactive.
 - Do not rewrite history unless explicitly requested.
