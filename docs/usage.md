@@ -27,12 +27,12 @@ ansible_python_interpreter=/usr/bin/python3
 ```
 
 This runs `ansible/site.yml` with the selected stack definition and installs the GPU Operator by default.
-It also installs an NFS server, exports `/srv/cns/nfs`, deploys `nfs-subdir-external-provisioner`, creates the default `nfs-client` StorageClass, installs MetalLB, and configures the stack-defined Layer 2 load-balancer address pool.
+It also installs an NFS server, exports `/srv/cns/nfs`, deploys `nfs-subdir-external-provisioner`, creates the default `nfs-client` StorageClass, installs MetalLB, configures the stack-defined Layer 2 load-balancer address pool, and installs Envoy Gateway.
 
-To install only Kubernetes, containerd, and Calico without GPU Operator, host driver cleanup, NFS provisioner, or MetalLB:
+To install only Kubernetes, containerd, and Calico without GPU Operator, host driver cleanup, NFS provisioner, MetalLB, or Envoy Gateway:
 
 ```bash
-./cns.sh install 1.36 --set install_gpu_operator=false --set install_nfs_provisioner=false --set install_metallb=false
+./cns.sh install 1.36 --set install_gpu_operator=false --set install_nfs_provisioner=false --set install_metallb=false --set install_envoy_gateway=false
 ```
 
 To deploy a specific GPU Operator CUDA driver container version:
@@ -51,6 +51,18 @@ To skip MetalLB load-balancer setup:
 
 ```bash
 ./cns.sh install 1.36 --set install_metallb=false
+```
+
+To skip Envoy Gateway setup:
+
+```bash
+./cns.sh install 1.36 --set install_envoy_gateway=false
+```
+
+To deploy a specific Envoy Gateway chart version:
+
+```bash
+./cns.sh install 1.36 --set envoy_gateway_version=1.8.0
 ```
 
 To override the MetalLB load-balancer IP range:
@@ -81,7 +93,7 @@ The installer starts `cns-matrix-web.service` on port `8888`, creates `/var/lib/
 sudo systemctl start --no-block cns-matrix.service
 ```
 
-By default, the service runs `tests/test_cns_matrix.py` against all discovered stacks with stack defaults. Set `CNS_MATRIX_ARGS` in `/etc/cns-matrix.env` to pass script options such as `--stack 1.36 --set install_gpu_operator=false --fail-fast`.
+By default, the service runs `tests/test_cns_matrix.py` against all discovered stacks with stack defaults. Set `CNS_MATRIX_ARGS` in `/etc/cns-matrix.env` to pass script options such as `--stack 1.36 --set install_gpu_operator=false --set install_envoy_gateway=false --fail-fast`.
 
 Open `http://<control-host>:8888/` for the dashboard. Raw run data and logs are kept under `/var/lib/cns-matrix/runs`.
 
@@ -100,6 +112,8 @@ Set `-e install_gpu_operator=false` to skip GPU Operator deployment when running
 Set `-e cuda_driver_container_version=580.126.20` to override the stack default GPU Operator CUDA driver container version.
 Set `-e install_nfs_provisioner=false` to skip NFS server and provisioner setup.
 Set `-e install_metallb=false` to skip MetalLB setup.
+Set `-e install_envoy_gateway=false` to skip Envoy Gateway setup.
+Set `-e envoy_gateway_version=1.8.0` to override the stack default Envoy Gateway chart version.
 Set `-e metallb_load_balancer_ip_range=10.86.6.94/32` to override the stack default MetalLB address pool.
 Place these override arguments after `-e @stacks/<version>.yml` so they take precedence over stack defaults.
 
@@ -111,7 +125,9 @@ After a successful install:
 - Calico pods are healthy
 - `kubectl get storageclass nfs-client` exists and is marked as the default StorageClass when NFS provisioner is enabled
 - `kubectl -n metallb-system get ipaddresspool cns-load-balancer-pool` shows the configured address range when MetalLB is enabled
+- `kubectl -n envoy-gateway-system rollout status deployment/envoy-gateway` succeeds when Envoy Gateway is enabled
 - With GPU Operator enabled, GPU Operator resources exist in the `gpu-operator` namespace
 - With `--set install_gpu_operator=false`, host GPU driver management remains outside CNS
 - With `--set install_nfs_provisioner=false`, NFS server and dynamic storage management remain outside CNS
 - With `--set install_metallb=false`, load-balancer IP management remains outside CNS
+- With `--set install_envoy_gateway=false`, Gateway API controller management remains outside CNS

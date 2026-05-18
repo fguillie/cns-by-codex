@@ -18,12 +18,15 @@ The default deployment sequence is:
 8. Configure the node NFS server export.
 9. Deploy `nfs-subdir-external-provisioner`.
 10. Deploy MetalLB and configure the Layer 2 address pool.
-11. Deploy the NVIDIA GPU Operator.
+11. Deploy Envoy Gateway.
+12. Deploy the NVIDIA GPU Operator.
 
 When `--set install_gpu_operator=false` is passed to `cns.sh install`, CNS skips the driver cleanup pre-checks and GPU Operator deployment.
 When `--set cuda_driver_container_version=<version>` is passed, CNS overrides the stack default GPU Operator CUDA driver container version for that install.
 When `--set install_nfs_provisioner=false` is passed, CNS skips NFS server setup and the NFS provisioner Helm release.
 When `--set install_metallb=false` is passed, CNS skips MetalLB Helm deployment and load-balancer address pool configuration.
+When `--set install_envoy_gateway=false` is passed, CNS skips Envoy Gateway deployment.
+When `--set envoy_gateway_version=<version>` is passed, CNS overrides the stack default Envoy Gateway chart version for that install.
 
 ## Main Components
 
@@ -42,6 +45,8 @@ When `--set install_metallb=false` is passed, CNS skips MetalLB Helm deployment 
   - Enables the node NFS server and deploys the default storage provisioner when enabled.
 - `ansible/roles/metallb`
   - Deploys MetalLB and configures the Layer 2 address pool when enabled.
+- `ansible/roles/envoy_gateway`
+  - Deploys Envoy Gateway when enabled.
 - `ansible/roles/precheck`
   - Removes active host CUDA/NVIDIA driver packages and disables Nouveau before install when GPU Operator is enabled.
 - `ansible/roles/gpu_operator`
@@ -57,4 +62,4 @@ When `--set install_metallb=false` is passed, CNS skips MetalLB Helm deployment 
 
 ## Uninstall Model
 
-The uninstall flow removes GPU Operator resources first, removes NFS provisioner resources and CNS export configuration, removes MetalLB resources, then tears down the Kubernetes cluster and the runtime components that CNS installed. NFS data under `/srv/cns/nfs` is preserved.
+The uninstall flow removes GPU Operator resources first, removes Envoy Gateway resources, removes NFS provisioner resources and CNS export configuration, removes MetalLB resources, then tears down the Kubernetes cluster and the runtime components that CNS installed. NFS data under `/srv/cns/nfs` is preserved.

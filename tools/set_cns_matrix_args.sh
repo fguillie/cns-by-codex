@@ -12,7 +12,7 @@ Usage:
 
 Examples:
   sudo ./tools/set_cns_matrix_args.sh ''
-  sudo ./tools/set_cns_matrix_args.sh '--stack 1.36 --set install_gpu_operator=false --fail-fast'
+  sudo ./tools/set_cns_matrix_args.sh '--stack 1.36 --set install_gpu_operator=false --set install_envoy_gateway=false --fail-fast'
 EOF
 }
 

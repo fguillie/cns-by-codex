@@ -14,6 +14,7 @@ calico_version: "3.32.0"
 install_gpu_operator: "true"
 install_nfs_provisioner: "true"
 install_metallb: "true"
+install_envoy_gateway: "true"
 
 # GPU Operator: pins the NVIDIA operator chart and CUDA driver container.
 gpu_operator_version: "v26.3.1"
@@ -28,3 +29,6 @@ nfs_subdir_external_provisioner_version: "4.0.18"
 # MetalLB: pins the load balancer chart and address pool.
 metallb_version: "0.15.3"
 metallb_load_balancer_ip_range: "10.86.6.94/32"
+
+# Envoy Gateway: pins the gateway controller chart.
+envoy_gateway_version: "1.8.0"

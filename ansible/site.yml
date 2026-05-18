@@ -23,10 +23,12 @@
           - install_gpu_operator is defined
           - install_nfs_provisioner is defined
           - install_metallb is defined
+          - install_envoy_gateway is defined
           - install_gpu_operator | string | lower in ['true', 'false']
           - install_nfs_provisioner | string | lower in ['true', 'false']
           - install_metallb | string | lower in ['true', 'false']
-        fail_msg: "Install requires a stack file from stacks/<version>.yml with valid install_gpu_operator, install_nfs_provisioner, and install_metallb values."
+          - install_envoy_gateway | string | lower in ['true', 'false']
+        fail_msg: "Install requires a stack file from stacks/<version>.yml with valid install_gpu_operator, install_nfs_provisioner, install_metallb, and install_envoy_gateway values."
       when: cns_action == 'install'
 
     - name: Validate GPU Operator stack variables for installs
@@ -63,10 +65,26 @@
         - cns_action == 'install'
         - install_metallb | bool
 
+    - name: Validate Envoy Gateway stack variables for installs
+      ansible.builtin.assert:
+        that:
+          - envoy_gateway_version is defined
+          - (envoy_gateway_version | string | length) > 0
+          - helm_version is defined
+        fail_msg: "Envoy Gateway install requires envoy_gateway_version and helm_version in the selected stack file."
+      when:
+        - cns_action == 'install'
+        - install_envoy_gateway | bool
+
   tasks:
     - name: Uninstall GPU Operator first
       ansible.builtin.import_role:
         name: gpu_operator
+      when: cns_action == 'uninstall'
+
+    - name: Uninstall Envoy Gateway
+      ansible.builtin.import_role:
+        name: envoy_gateway
       when: cns_action == 'uninstall'
 
     - name: Uninstall NFS provisioner
@@ -106,7 +124,7 @@
         name: helm_client
       when:
         - cns_action == 'install'
-        - (install_gpu_operator | bool) or (install_nfs_provisioner | bool) or (install_metallb | bool)
+        - (install_gpu_operator | bool) or (install_nfs_provisioner | bool) or (install_metallb | bool) or (install_envoy_gateway | bool)
 
     - name: Install NFS provisioner
       ansible.builtin.import_role:
@@ -121,6 +139,13 @@
       when:
         - cns_action == 'install'
         - install_metallb | bool
+
+    - name: Install Envoy Gateway
+      ansible.builtin.import_role:
+        name: envoy_gateway
+      when:
+        - cns_action == 'install'
+        - install_envoy_gateway | bool
 
     - name: Install GPU Operator
       ansible.builtin.import_role:

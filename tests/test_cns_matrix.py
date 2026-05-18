@@ -29,8 +29,14 @@ CUDA_DRIVER_CONTAINER_VERSION_KEY = "cuda_driver_container_version"
 INSTALL_GPU_OPERATOR_KEY = "install_gpu_operator"
 INSTALL_NFS_PROVISIONER_KEY = "install_nfs_provisioner"
 INSTALL_METALLB_KEY = "install_metallb"
+INSTALL_ENVOY_GATEWAY_KEY = "install_envoy_gateway"
 STACK_BOOL_KEYS = frozenset(
-    (INSTALL_GPU_OPERATOR_KEY, INSTALL_NFS_PROVISIONER_KEY, INSTALL_METALLB_KEY)
+    (
+        INSTALL_GPU_OPERATOR_KEY,
+        INSTALL_NFS_PROVISIONER_KEY,
+        INSTALL_METALLB_KEY,
+        INSTALL_ENVOY_GATEWAY_KEY,
+    )
 )
 KUBECONFIG = "/etc/kubernetes/admin.conf"
 NFS_NAMESPACE = "nfs-provisioner"
@@ -44,6 +50,10 @@ METALLB_IP_ADDRESS_POOL = "cns-load-balancer-pool"
 METALLB_L2_ADVERTISEMENT = "cns-l2-advertisement"
 METALLB_TEST_NAMESPACE = "cns-test-metallb"
 METALLB_TEST_SERVICE = "cns-test-load-balancer"
+ENVOY_GATEWAY_NAMESPACE = "envoy-gateway-system"
+ENVOY_GATEWAY_RELEASE = "eg"
+ENVOY_GATEWAY_CHART_PREFIX = "gateway-helm-"
+ENVOY_GATEWAY_DEPLOYMENT = "envoy-gateway"
 GPU_NAMESPACE = "gpu-operator"
 GPU_RELEASE = "gpu-operator"
 GPU_CHART_PREFIX = "gpu-operator-"
@@ -63,6 +73,7 @@ class Stack:
     nfs_provisioner_version: str
     metallb_version: str
     metallb_load_balancer_ip_range: str
+    envoy_gateway_version: str
 
 
 @dataclass(frozen=True)
@@ -70,12 +81,14 @@ class StackConfig:
     install_gpu_operator: bool
     install_nfs_provisioner: bool
     install_metallb: bool
+    install_envoy_gateway: bool
     containerd_version: str
     gpu_operator_version: str
     cuda_driver_container_version: str
     nfs_provisioner_version: str
     metallb_version: str
     metallb_load_balancer_ip_range: str
+    envoy_gateway_version: str
 
 
 @dataclass
@@ -94,6 +107,7 @@ class CaseResult:
     nfs_provisioner_version: str
     metallb_version: str
     metallb_ip_range: str
+    envoy_gateway_version: str
     containerd_version: str
     cuda_driver_version: str
     install: str = "skip"
@@ -323,6 +337,7 @@ def main() -> int:
                         nfs_provisioner_version="-",
                         metallb_version="-",
                         metallb_ip_range="-",
+                        envoy_gateway_version="-",
                         containerd_version="-",
                         cuda_driver_version="-",
                         cleanup="fail",
@@ -551,6 +566,11 @@ def discover_stacks(repo_root: pathlib.Path) -> list[Stack]:
             INSTALL_METALLB_KEY,
             path,
         )
+        parse_stack_bool(
+            require_key(data, INSTALL_ENVOY_GATEWAY_KEY, path),
+            INSTALL_ENVOY_GATEWAY_KEY,
+            path,
+        )
         nfs_version = require_key(
             data,
             "nfs_subdir_external_provisioner_version",
@@ -558,6 +578,7 @@ def discover_stacks(repo_root: pathlib.Path) -> list[Stack]:
         )
         metallb_version = require_key(data, "metallb_version", path)
         metallb_ip_range = require_key(data, "metallb_load_balancer_ip_range", path)
+        envoy_gateway_version = require_key(data, "envoy_gateway_version", path)
         stacks.append(
             Stack(
                 version=version,
@@ -568,6 +589,7 @@ def discover_stacks(repo_root: pathlib.Path) -> list[Stack]:
                 nfs_provisioner_version=nfs_version,
                 metallb_version=metallb_version,
                 metallb_load_balancer_ip_range=metallb_ip_range,
+                envoy_gateway_version=envoy_gateway_version,
             )
         )
     if not stacks:
@@ -658,6 +680,11 @@ def validate_stack_overrides(stack: Stack, overrides: dict[str, str]) -> None:
             f"{CUDA_DRIVER_CONTAINER_VERSION_KEY} requires "
             f"{INSTALL_GPU_OPERATOR_KEY}=true for {stack.path}."
         )
+    if "envoy_gateway_version" in overrides and not config.install_envoy_gateway:
+        raise SystemExit(
+            f"envoy_gateway_version requires "
+            f"{INSTALL_ENVOY_GATEWAY_KEY}=true for {stack.path}."
+        )
 
 
 def effective_stack_config(stack: Stack, overrides: dict[str, str]) -> StackConfig:
@@ -679,6 +706,11 @@ def effective_stack_config(stack: Stack, overrides: dict[str, str]) -> StackConf
             INSTALL_METALLB_KEY,
             stack.path,
         ),
+        install_envoy_gateway=parse_stack_bool(
+            require_key(values, INSTALL_ENVOY_GATEWAY_KEY, stack.path),
+            INSTALL_ENVOY_GATEWAY_KEY,
+            stack.path,
+        ),
         containerd_version=require_key(values, "containerd_version", stack.path),
         gpu_operator_version=require_key(values, "gpu_operator_version", stack.path),
         cuda_driver_container_version=require_key(
@@ -697,6 +729,7 @@ def effective_stack_config(stack: Stack, overrides: dict[str, str]) -> StackConf
             "metallb_load_balancer_ip_range",
             stack.path,
         ),
+        envoy_gateway_version=require_key(values, "envoy_gateway_version", stack.path),
     )
 
 
@@ -851,6 +884,7 @@ def run_case(
         nfs_provisioner_version=case_nfs_provisioner_label(config),
         metallb_version=case_metallb_label(config),
         metallb_ip_range=case_metallb_ip_range_label(config, overrides),
+        envoy_gateway_version=case_envoy_gateway_label(config),
         containerd_version=config.containerd_version,
         cuda_driver_version=case_cuda_driver_label(
             config,
@@ -972,6 +1006,11 @@ def validate_install_state(
         validate_metallb_enabled(runner, config, log_dir)
     else:
         validate_metallb_disabled(runner, log_dir)
+
+    if config.install_envoy_gateway:
+        validate_envoy_gateway_enabled(runner, config, log_dir)
+    else:
+        validate_envoy_gateway_disabled(runner, log_dir)
 
     if config.install_gpu_operator:
         validate_gpu_enabled(runner, config, log_dir)
@@ -1282,6 +1321,46 @@ def validate_metallb_disabled(runner: Runner, log_dir: pathlib.Path) -> None:
     if namespace.rc == 0:
         raise RuntimeError(
             f"{METALLB_NAMESPACE} namespace exists while MetalLB is disabled"
+        )
+
+
+def validate_envoy_gateway_enabled(
+    runner: Runner,
+    config: StackConfig,
+    log_dir: pathlib.Path,
+) -> None:
+    releases = helm_releases(
+        runner,
+        ENVOY_GATEWAY_NAMESPACE,
+        log_dir / "validate-envoy-gateway-helm.log",
+    )
+    chart = find_release_chart(releases, ENVOY_GATEWAY_RELEASE)
+    expected_chart = ENVOY_GATEWAY_CHART_PREFIX + config.envoy_gateway_version
+    if chart != expected_chart:
+        raise RuntimeError(
+            f"Envoy Gateway chart mismatch: got {chart!r}, want {expected_chart!r}"
+        )
+
+    runner.wait_for(
+        "Envoy Gateway controller rollout",
+        f"kubectl --kubeconfig {KUBECONFIG} -n {ENVOY_GATEWAY_NAMESPACE} "
+        f"rollout status deployment/{ENVOY_GATEWAY_DEPLOYMENT} --timeout=10s",
+        lambda result: result.rc == 0,
+        sudo=True,
+        timeout=300,
+        log_path=log_dir / "validate-envoy-gateway-rollout.log",
+    )
+
+
+def validate_envoy_gateway_disabled(runner: Runner, log_dir: pathlib.Path) -> None:
+    namespace = runner.ssh(
+        f"kubectl --kubeconfig {KUBECONFIG} get namespace {ENVOY_GATEWAY_NAMESPACE}",
+        sudo=True,
+        log_path=log_dir / "validate-envoy-gateway-disabled-namespace.log",
+    )
+    if namespace.rc == 0:
+        raise RuntimeError(
+            f"{ENVOY_GATEWAY_NAMESPACE} namespace exists while Envoy Gateway is disabled"
         )
 
 
@@ -1700,6 +1779,12 @@ def case_metallb_label(config: StackConfig) -> str:
     return config.metallb_version
 
 
+def case_envoy_gateway_label(config: StackConfig) -> str:
+    if not config.install_envoy_gateway:
+        return "-"
+    return config.envoy_gateway_version
+
+
 def case_metallb_ip_range_label(
     config: StackConfig,
     overrides: dict[str, str],
@@ -1720,7 +1805,8 @@ def case_id(
     gpu = "gpu" if config.install_gpu_operator else "no-gpu"
     nfs = "nfs" if config.install_nfs_provisioner else "no-nfs"
     metallb = "metallb" if config.install_metallb else "no-metallb"
-    parts = [f"{index:02d}", "stack", stack, gpu, nfs, metallb]
+    envoy = "envoy" if config.install_envoy_gateway else "no-envoy"
+    parts = [f"{index:02d}", "stack", stack, gpu, nfs, metallb, envoy]
     if config.install_gpu_operator:
         driver = (
             config.cuda_driver_container_version
@@ -1746,6 +1832,7 @@ def print_table(results: list[CaseResult]) -> None:
         "NFS_LOCAL_PROVISIONER",
         "METALLB",
         "METALLB_RANGE",
+        "ENVOY_GATEWAY",
         "CONTAINERD",
         "INSTALL",
         "RERUN",
@@ -1764,6 +1851,7 @@ def print_table(results: list[CaseResult]) -> None:
             result.nfs_provisioner_version,
             result.metallb_version,
             result.metallb_ip_range,
+            result.envoy_gateway_version,
             result.containerd_version,
             result.install,
             result.rerun,

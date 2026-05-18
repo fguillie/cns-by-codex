@@ -77,3 +77,8 @@ metallb_repo_url: https://metallb.github.io/metallb
 metallb_chart: metallb/metallb
 metallb_ip_address_pool_name: cns-load-balancer-pool
 metallb_l2_advertisement_name: cns-l2-advertisement
+
+envoy_gateway_namespace: envoy-gateway-system
+envoy_gateway_release_name: eg
+envoy_gateway_chart: oci://docker.io/envoyproxy/gateway-helm
+envoy_gateway_deployment_name: envoy-gateway

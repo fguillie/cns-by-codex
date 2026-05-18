@@ -1,0 +1,57 @@
+---
+# Deploys Envoy Gateway with Helm and waits for the controller.
+- name: Inspect current Envoy Gateway release
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - list
+      - --namespace
+      - "{{ envoy_gateway_namespace }}"
+      - -o
+      - json
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: envoy_gateway_release_list
+  failed_when: false
+  changed_when: false
+
+- name: Set current Envoy Gateway release state
+  ansible.builtin.set_fact:
+    envoy_gateway_current_release: "{{ ((envoy_gateway_release_list.stdout | default('[]', true) | from_json) | selectattr('name', 'equalto', envoy_gateway_release_name) | list | first) | default({}, true) }}"
+
+- name: Install or upgrade Envoy Gateway
+  ansible.builtin.command:
+    argv:
+      - "{{ helm_binary_path }}"
+      - upgrade
+      - --install
+      - "{{ envoy_gateway_release_name }}"
+      - "{{ envoy_gateway_chart }}"
+      - --namespace
+      - "{{ envoy_gateway_namespace }}"
+      - --create-namespace
+      - --version={{ envoy_gateway_version }}
+      - --wait
+      - --timeout=10m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: envoy_gateway_install
+  changed_when: true
+  when: >
+    (envoy_gateway_current_release | length) == 0 or
+    envoy_gateway_current_release.get('status', '') != 'deployed' or
+    envoy_gateway_current_release.get('chart', '') != ('gateway-helm-' ~ envoy_gateway_version)
+
+- name: Wait for Envoy Gateway controller rollout
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - -n
+      - "{{ envoy_gateway_namespace }}"
+      - rollout
+      - status
+      - deployment/{{ envoy_gateway_deployment_name }}
+      - --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false

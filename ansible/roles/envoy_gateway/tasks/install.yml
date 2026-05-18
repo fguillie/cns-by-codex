@@ -1,0 +1,4 @@
+---
+# Runs the Envoy Gateway install task sequence.
+- name: Deploy Envoy Gateway
+  ansible.builtin.include_tasks: envoy_gateway.yml

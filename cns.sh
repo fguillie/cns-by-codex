@@ -31,6 +31,8 @@ Examples:
   ./cns.sh install 1.36 --set install_gpu_operator=false
   ./cns.sh install 1.36 --set install_nfs_provisioner=false
   ./cns.sh install 1.36 --set install_metallb=false
+  ./cns.sh install 1.36 --set install_envoy_gateway=false
+  ./cns.sh install 1.36 --set envoy_gateway_version=1.8.0
   ./cns.sh install 1.36 --set metallb_load_balancer_ip_range=10.86.6.94/32
   ./cns.sh install 1.36 --set cuda_driver_container_version=580.126.20
 
@@ -42,7 +44,7 @@ Available stack versions:
 
 Notes:
   - Override keys must exist as top-level keys in the selected stack file.
-  - install_gpu_operator, install_nfs_provisioner, and install_metallb values must be true or false.
+  - install_gpu_operator, install_nfs_provisioner, install_metallb, and install_envoy_gateway values must be true or false.
   - Edit ansible/inventory/hosts.ini before running the playbook.
   - Password-based SSH requires sshpass on the control machine.
 EOF
@@ -101,7 +103,9 @@ run_install() {
   local set_key
   local set_value
   local effective_gpu_operator
+  local effective_envoy_gateway
   local cuda_driver_version_overridden="false"
+  local envoy_gateway_version_overridden="false"
   local -a ansible_args
   local -a set_overrides=()
 
@@ -150,7 +154,7 @@ run_install() {
           print_help
           exit 1
         fi
-        if [[ "${set_key}" =~ ^install_(gpu_operator|nfs_provisioner|metallb)$ && ! "${set_value,,}" =~ ^(true|false)$ ]]; then
+        if [[ "${set_key}" =~ ^install_(gpu_operator|nfs_provisioner|metallb|envoy_gateway)$ && ! "${set_value,,}" =~ ^(true|false)$ ]]; then
           printf 'Invalid value for %s: %s\nExpected true or false.\n\n' "${set_key}" "${set_value}" >&2
           print_help
           exit 1
@@ -168,18 +172,29 @@ run_install() {
   done
 
   effective_gpu_operator="$(stack_value "${stack_file}" "install_gpu_operator")"
+  effective_envoy_gateway="$(stack_value "${stack_file}" "install_envoy_gateway")"
   for set_arg in "${set_overrides[@]}"; do
     set_key="${set_arg%%=*}"
     set_value="${set_arg#*=}"
     if [[ "${set_key}" == "install_gpu_operator" ]]; then
       effective_gpu_operator="${set_value}"
+    elif [[ "${set_key}" == "install_envoy_gateway" ]]; then
+      effective_envoy_gateway="${set_value}"
     elif [[ "${set_key}" == "cuda_driver_container_version" ]]; then
       cuda_driver_version_overridden="true"
+    elif [[ "${set_key}" == "envoy_gateway_version" ]]; then
+      envoy_gateway_version_overridden="true"
     fi
   done
 
   if ! is_truthy "${effective_gpu_operator}" && [[ "${cuda_driver_version_overridden}" == "true" ]]; then
     printf '%s\n\n' 'cuda_driver_container_version requires GPU Operator installation. Set install_gpu_operator=true or omit the driver version override.' >&2
+    print_help
+    exit 1
+  fi
+
+  if ! is_truthy "${effective_envoy_gateway}" && [[ "${envoy_gateway_version_overridden}" == "true" ]]; then
+    printf '%s\n\n' 'envoy_gateway_version requires Envoy Gateway installation. Set install_envoy_gateway=true or omit the Envoy Gateway version override.' >&2
     print_help
     exit 1
   fi

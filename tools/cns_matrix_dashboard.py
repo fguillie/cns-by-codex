@@ -28,6 +28,8 @@ VALIDATION_LOGS = (
     "validate-gpu-helm.log",
     "validate-nfs-helm.log",
     "validate-metallb-helm.log",
+    "validate-envoy-gateway-helm.log",
+    "validate-envoy-gateway-rollout.log",
 )
 CONSOLE_HEADERS = (
     "STACK",
@@ -36,6 +38,7 @@ CONSOLE_HEADERS = (
     "NFS_LOCAL_PROVISIONER",
     "METALLB",
     "METALLB_RANGE",
+    "ENVOY_GATEWAY",
     "CONTAINERD",
     "INSTALL",
     "RERUN",
@@ -534,6 +537,7 @@ def run_configuration_section() -> str:
     )
     driver_placeholder = ", ".join(options["cuda_driver_versions"])
     containerd_placeholder = ", ".join(options["containerd_versions"])
+    envoy_placeholder = ", ".join(options["envoy_gateway_versions"])
     metallb_placeholder = options["metallb_load_balancer_ip_range"]
     return f"""
 <section>
@@ -551,6 +555,7 @@ def run_configuration_section() -> str:
           {select_field("install-gpu", "GPU Operator", "install_gpu_operator")}
           {select_field("install-nfs", "NFS provisioner", "install_nfs_provisioner")}
           {select_field("install-metallb", "MetalLB", "install_metallb")}
+          {select_field("install-envoy", "Envoy Gateway", "install_envoy_gateway")}
         </fieldset>
         <fieldset>
           <legend>Version Matrix</legend>
@@ -561,6 +566,10 @@ def run_configuration_section() -> str:
           <div class="field">
             <label for="containerd-values">containerd versions</label>
             <textarea id="containerd-values" placeholder="{html.escape(containerd_placeholder)}"></textarea>
+          </div>
+          <div class="field">
+            <label for="envoy-gateway-values">Envoy Gateway versions</label>
+            <textarea id="envoy-gateway-values" placeholder="{html.escape(envoy_placeholder)}"></textarea>
           </div>
         </fieldset>
         <fieldset>
@@ -614,12 +623,14 @@ def dashboard_config_options() -> dict[str, Any]:
     stacks = []
     cuda_versions = set()
     containerd_versions = set()
+    envoy_gateway_versions = set()
     metallb_ranges = set()
     for path in sorted((REPO_ROOT / "stacks").glob("*.yml")):
         data = parse_simple_yaml(path)
         stacks.append(data.get("cns_stack_version", path.stem))
         add_if_present(cuda_versions, data, "cuda_driver_container_version")
         add_if_present(containerd_versions, data, "containerd_version")
+        add_if_present(envoy_gateway_versions, data, "envoy_gateway_version")
         add_if_present(metallb_ranges, data, "metallb_load_balancer_ip_range")
 
     cuda_versions.update(("580.159.03", "595.71.05"))
@@ -629,6 +640,7 @@ def dashboard_config_options() -> dict[str, Any]:
         "stacks": stacks or ["1.36"],
         "cuda_driver_versions": sorted(cuda_versions) or ["580.126.20"],
         "containerd_versions": sorted(containerd_versions) or ["2.3.0"],
+        "envoy_gateway_versions": sorted(envoy_gateway_versions) or ["1.8.0"],
         "metallb_load_balancer_ip_range": sorted(metallb_ranges)[0]
         if metallb_ranges
         else "10.86.6.94/32",
@@ -789,6 +801,7 @@ def console_row(result: dict[str, Any]) -> list[str]:
         str(result.get("nfs_provisioner_version") or ""),
         str(result.get("metallb_version") or ""),
         str(result.get("metallb_ip_range") or ""),
+        str(result.get("envoy_gateway_version") or ""),
         str(result.get("containerd_version") or ""),
         str(result.get("install") or ""),
         str(result.get("rerun") or ""),
@@ -837,6 +850,7 @@ def case_table(base_dir: pathlib.Path, run: dict[str, Any]) -> str:
           <th>GPU</th>
           <th>NFS</th>
           <th>MetalLB</th>
+          <th>Envoy</th>
           <th>Containerd</th>
           <th>Install</th>
           <th>Rerun</th>
@@ -867,6 +881,7 @@ def case_row(base_dir: pathlib.Path, run_id: str, row: dict[str, Any]) -> str:
   <td>{html.escape(str(row.get("cuda_driver_version", "-")))}</td>
   <td>{html.escape(str(row.get("nfs_provisioner_version", "-")))}</td>
   <td>{html.escape(str(row.get("metallb_version", "-")))}</td>
+  <td>{html.escape(str(row.get("envoy_gateway_version", "-")))}</td>
   <td>{html.escape(str(row.get("containerd_version", "-")))}</td>
   <td>{status_pill(row.get("install"))}</td>
   <td>{status_pill(row.get("rerun"))}</td>
@@ -1146,8 +1161,10 @@ def dashboard_script() -> str:
     installGpu: document.getElementById("install-gpu"),
     installNfs: document.getElementById("install-nfs"),
     installMetallb: document.getElementById("install-metallb"),
+    installEnvoy: document.getElementById("install-envoy"),
     cudaDrivers: document.getElementById("cuda-driver-values"),
     containerdVersions: document.getElementById("containerd-values"),
+    envoyGatewayVersions: document.getElementById("envoy-gateway-values"),
     metallbRange: document.getElementById("metallb-range"),
     failFast: document.getElementById("fail-fast"),
     preClean: document.getElementById("pre-clean"),
@@ -1181,8 +1198,10 @@ def dashboard_script() -> str:
       installGpu: controls.installGpu.value,
       installNfs: controls.installNfs.value,
       installMetallb: controls.installMetallb.value,
+      installEnvoy: controls.installEnvoy.value,
       cudaDrivers: controls.cudaDrivers.value,
       containerdVersions: controls.containerdVersions.value,
+      envoyGatewayVersions: controls.envoyGatewayVersions.value,
       metallbRange: controls.metallbRange.value,
       failFast: controls.failFast.checked,
       preClean: controls.preClean.checked
@@ -1205,8 +1224,10 @@ def dashboard_script() -> str:
       controls.installGpu.value = data.installGpu || "";
       controls.installNfs.value = data.installNfs || "";
       controls.installMetallb.value = data.installMetallb || "";
+      controls.installEnvoy.value = data.installEnvoy || "";
       controls.cudaDrivers.value = data.cudaDrivers || "";
       controls.containerdVersions.value = data.containerdVersions || "";
+      controls.envoyGatewayVersions.value = data.envoyGatewayVersions || "";
       controls.metallbRange.value = data.metallbRange || "";
       controls.failFast.checked = Boolean(data.failFast);
       controls.preClean.checked = data.preClean !== false;
@@ -1230,11 +1251,15 @@ def dashboard_script() -> str:
     addSet(tokens, "install_gpu_operator", controls.installGpu.value);
     addSet(tokens, "install_nfs_provisioner", controls.installNfs.value);
     addSet(tokens, "install_metallb", controls.installMetallb.value);
+    addSet(tokens, "install_envoy_gateway", controls.installEnvoy.value);
     splitValues(controls.cudaDrivers.value).forEach((value) => {
       addSet(tokens, "cuda_driver_container_version", value);
     });
     splitValues(controls.containerdVersions.value).forEach((value) => {
       addSet(tokens, "containerd_version", value);
+    });
+    splitValues(controls.envoyGatewayVersions.value).forEach((value) => {
+      addSet(tokens, "envoy_gateway_version", value);
     });
     const metallbRange = controls.metallbRange.value.trim();
     if (metallbRange) {
@@ -1257,10 +1282,14 @@ def dashboard_script() -> str:
       "sudo ./tools/set_cns_matrix_args.sh " + shellQuote(args),
       "sudo systemctl start --no-block cns-matrix.service"
     ].join("\n");
-    controls.warning.textContent =
-      controls.installGpu.value === "false" && splitValues(controls.cudaDrivers.value).length > 0
-        ? "cuda_driver_container_version requires GPU Operator. Set GPU Operator to stack default or force enabled, or clear CUDA driver containers."
-        : "";
+    const warnings = [];
+    if (controls.installGpu.value === "false" && splitValues(controls.cudaDrivers.value).length > 0) {
+      warnings.push("cuda_driver_container_version requires GPU Operator. Set GPU Operator to stack default or force enabled, or clear CUDA driver containers.");
+    }
+    if (controls.installEnvoy.value === "false" && splitValues(controls.envoyGatewayVersions.value).length > 0) {
+      warnings.push("envoy_gateway_version requires Envoy Gateway. Set Envoy Gateway to stack default or force enabled, or clear Envoy Gateway versions.");
+    }
+    controls.warning.textContent = warnings.join(" ");
     saveConfig();
   }
 
@@ -1273,8 +1302,10 @@ def dashboard_script() -> str:
     controls.installGpu.value = "";
     controls.installNfs.value = "";
     controls.installMetallb.value = "";
+    controls.installEnvoy.value = "";
     controls.cudaDrivers.value = "";
     controls.containerdVersions.value = "";
+    controls.envoyGatewayVersions.value = "";
     controls.metallbRange.value = "";
     controls.failFast.checked = false;
     controls.preClean.checked = true;

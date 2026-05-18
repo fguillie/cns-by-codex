@@ -49,7 +49,7 @@ CNS_MATRIX_ARGS=''
 For a smaller smoke run:
 
 ```bash
-CNS_MATRIX_ARGS='--stack 1.36 --set install_gpu_operator=false --set install_nfs_provisioner=false --set install_metallb=false --fail-fast'
+CNS_MATRIX_ARGS='--stack 1.36 --set install_gpu_operator=false --set install_nfs_provisioner=false --set install_metallb=false --set install_envoy_gateway=false --fail-fast'
 ```
 
 ## Install The Services
@@ -94,7 +94,7 @@ sudo ufw allow 8888/tcp
 
 The dashboard shows the current run status, completed cases, pass/fail counts, phase status, and links to raw logs.
 
-The dashboard also includes a **Run Configuration** section. Use it to select stacks, component toggles, CUDA driver container versions, containerd versions, MetalLB address range, fail-fast behavior, and pre-clean behavior. The **Start test** button queues the generated `CNS_MATRIX_ARGS` and starts `cns-matrix.service` when it is not already active; the **Stop test** button stops the active matrix run. Recent runs also include **Start** buttons to queue a rerun with the same arguments. The **Queued Runs** section shows pending runs and lets an operator remove a queued item before it starts. The installer enables these controls with a sudoers rule limited to `systemctl start`, `systemctl stop`, and `tools/set_cns_matrix_args.sh`.
+The dashboard also includes a **Run Configuration** section. Use it to select stacks, component toggles including Envoy Gateway, CUDA driver container versions, Envoy Gateway versions, containerd versions, MetalLB address range, fail-fast behavior, and pre-clean behavior. The **Start test** button queues the generated `CNS_MATRIX_ARGS` and starts `cns-matrix.service` when it is not already active; the **Stop test** button stops the active matrix run. Recent runs also include **Start** buttons to queue a rerun with the same arguments. The **Queued Runs** section shows pending runs and lets an operator remove a queued item before it starts. The installer enables these controls with a sudoers rule limited to `systemctl start`, `systemctl stop`, and `tools/set_cns_matrix_args.sh`.
 
 The dashboard does not implement authentication. Restrict port `8888` with host firewall rules or lab network policy if the control host is reachable by untrusted clients.
 
