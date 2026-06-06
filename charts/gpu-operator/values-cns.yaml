@@ -1,4 +1,0 @@
----
-# Defines CNS-specific overrides for the vendored NVIDIA GPU Operator chart.
-operator:
-  defaultRuntime: containerd
