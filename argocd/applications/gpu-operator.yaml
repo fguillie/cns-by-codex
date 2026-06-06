@@ -1,0 +1,31 @@
+---
+# Declares the Argo CD application for deploying the vendored GPU Operator chart.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gpu-operator
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/fguillie/cns-by-codex.git
+    targetRevision: main
+    path: charts/gpu-operator
+    helm:
+      releaseName: gpu-operator
+      valueFiles:
+        - values-cns.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gpu-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: privileged
